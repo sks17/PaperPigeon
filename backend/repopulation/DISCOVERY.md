@@ -26,7 +26,7 @@ surfacing them in the UI is deferred frontend work. This keeps the existing fron
 | Institution | openalex inst id | institution/3 | `ror`, `openalex_id`, `normalized_name` | `{country}` |
 | Researcher | openalex author id | researcher/1 | `orcid`, `openalex_id`, `normalized_name` | `{papers:[{title,year,document_id,tags}], tags:[topic labels], h_index, works_count}` |
 | Topic | openalex topic id | topic/4 | `openalex_id` | `{field, subfield, domain}` |
-| Paper | openalex work id | paper/5 | `openalex_id`, `doi` | `{year, cited_by_count}` |
+| Paper | openalex work id | paper/5 | `openalex_id` | `{year, cited_by_count, doi}` |
 
 - `name`: institution canonical name / author display_name / topic display_name / work title.
 - `ai_description = None` in Phase 2 (RAG descriptions are Phase 4). `confidence`: 1.0 for API-sourced.
