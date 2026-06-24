@@ -19,11 +19,10 @@ import pgserver
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.repopulation.db import make_engine, make_session_factory  # noqa: E402
+from backend.repopulation.db import make_engine, make_session_factory, migration_files  # noqa: E402
 from backend.repopulation.importer.cache_to_rows import cache_to_rows  # noqa: E402
 from backend.repopulation.loader import load_import_rows  # noqa: E402
 
-MIGRATION = ROOT / "backend" / "repopulation" / "migrations" / "0001_initial.sql"
 CACHE = ROOT / "public" / "graph_cache.json"
 PORT = int(os.environ.get("PORT", "8000"))
 
@@ -33,7 +32,8 @@ def main() -> int:
     pgdata.mkdir(exist_ok=True)
     srv = pgserver.get_server(pgdata)
     try:
-        srv.psql(MIGRATION.read_text(encoding="utf-8"))
+        for migration in migration_files():
+            srv.psql(migration.read_text(encoding="utf-8"))
         uri = srv.get_uri()
         factory = make_session_factory(make_engine(uri))
         with factory() as session:

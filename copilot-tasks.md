@@ -25,3 +25,43 @@
 - [x] 2. Create `backend/repopulation/README.md`: a short package-layout overview copied from the
         module map in `backend/repopulation/__init__.py`, with a one-line pointer to `SCHEMA.md`
         (the data contract) and `migrations/0001_initial.sql` (the schema). No new content/claims.
+
+- [x] 3. Read-only repo map pass: inventory modules, entrypoints, and ownership boundaries across
+   `src/`, `backend/`, `api/`, and top-level docs. Produce a concise map in
+   `docs/repo-readability-audit.md` with file paths and one-line responsibilities.
+
+- [x] 4. Read-only Python structure pass: inspect classes/functions in `backend/` and flag where
+   declaration order harms readability (helpers mixed with public APIs, lifecycle flow split,
+   unclear grouping). Record candidate reorder plans only; no edits in this task.
+
+- [x] 5. Read-only TypeScript structure pass: inspect components/services in `src/` and flag where
+   method/comment placement makes intent hard to follow. Record candidate reorder/comment
+   cleanup plans only; no edits in this task.
+
+- [ ] 6. Legibility edit pass (Python): reorder methods and nearby comments in the highest-value
+   Python files to follow a consistent reading flow (public API first, helpers next, internals
+   last). Do not change behavior, signatures, or logic.
+
+- [ ] 7. Legibility edit pass (TypeScript): move comments and reorder functions/method blocks in
+   selected frontend files for clarity (state/setup, handlers, render/helpers). Do not change
+   behavior, props/contracts, or data flow.
+
+- [ ] 8. Comment quality pass: rewrite or relocate misleading/stale comments and add short,
+   high-signal comments where preconditions/postconditions are implicit. Keep comments factual,
+   minimal, and adjacent to the relevant code.
+
+- [ ] 9. Read-only anti-pattern scan: review the repo and flag potential poor practices with evidence,
+   including God Classes, unclear preconditions/postconditions, weak module boundaries, mixed
+   responsibilities, and hidden side effects.
+
+- [ ] 10. Read-only findings report: add a section to `docs/repo-readability-audit.md` with each
+   flagged issue, severity (low/med/high), exact file references, why it matters, and a small
+   remediation suggestion.
+
+- [ ] 11. Traceability pass: for every file changed in tasks 6-8, document before/after rationale in
+   `docs/repo-readability-audit.md`, confirming edits were organizational/comment-only and not
+   behavioral.
+
+- [ ] 12. Final review checklist: verify task-order completion, ensure no structural/API changes were
+   introduced, and summarize remaining high-risk design/code-quality concerns that should be
+   escalated to Cursor or the main thread.

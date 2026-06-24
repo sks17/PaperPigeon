@@ -7,9 +7,11 @@ import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-MIGRATION_PATH = (
-    PROJECT_ROOT / "backend" / "repopulation" / "migrations" / "0001_initial.sql"
-)
+MIGRATIONS_DIR = PROJECT_ROOT / "backend" / "repopulation" / "migrations"
+
+
+def _migration_files() -> list[Path]:
+    return sorted(MIGRATIONS_DIR.glob("*.sql"))
 
 # Statement-level destructive DDL. Matched against individual SQL statements with
 # `--` comments stripped, so prose in comments cannot trip these. FK referential
@@ -26,7 +28,8 @@ DESTRUCTIVE_PATTERNS: dict[str, re.Pattern[str]] = {
 
 
 def _read_migration() -> str:
-    return MIGRATION_PATH.read_text(encoding="utf-8")
+    """All migrations concatenated — the additive-only invariant must hold across every file."""
+    return "\n".join(f.read_text(encoding="utf-8") for f in _migration_files())
 
 
 def _strip_line_comments(sql: str) -> str:
@@ -41,7 +44,7 @@ def _statements(sql: str) -> list[str]:
 
 
 def test_migration_file_exists() -> None:
-    assert MIGRATION_PATH.is_file(), f"missing migration: {MIGRATION_PATH}"
+    assert _migration_files(), f"no migrations found in {MIGRATIONS_DIR}"
 
 
 @pytest.mark.parametrize("label", list(DESTRUCTIVE_PATTERNS))

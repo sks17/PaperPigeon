@@ -1,10 +1,12 @@
 """Load ImportRows into Postgres and serve the graph back from it (main-thread integration code).
 
-This is the DB-backed counterpart to the pure importer/serializer. It implements the weighted-edge
-strategy from SCHEMA.md: parallel COAUTHORED_WITH edges collapse to ONE row with weight=count on the
-way in, and expand by weight on the way out — so the DB-backed /api/graph/data reproduces the
-existing graph (same nodes, same link multiset). Idempotent: re-loading the same rows inserts no
-duplicates (ON CONFLICT DO NOTHING against the PKs / edge_uq constraint).
+DB-backed counterpart to the pure importer/serializer:
+- weighted-edge strategy (SCHEMA.md): parallel COAUTHORED_WITH collapse to one weighted row on
+  write, expand by weight on read;
+- run-membership (migration 0002): records which nodes/edges belong to each run's snapshot, and
+  auto-publishes the FIRST run loaded (the legacy import) so the default served graph is unchanged
+  while later repopulation runs stay invisible until explicitly published;
+- idempotent: re-loading the same rows inserts no duplicates.
 """
 from __future__ import annotations
 
@@ -15,15 +17,22 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from backend.repopulation.models.edges import Edge
+from backend.repopulation.models.membership import (
+    PUBLISHED_RUN_KEY,
+    AppState,
+    RunEdge,
+    RunNode,
+)
 from backend.repopulation.models.nodes import Node, Relevance, RepopulationRun
 from backend.repopulation.models.provenance import SourceRecord
 from backend.repopulation.serializers.graph_data import serialize_graph
 
 
 def load_import_rows(session: Session, rows: dict) -> dict:
-    """Idempotent insert of ImportRows (SCHEMA.md §1). Returns row counts after load."""
-    run_id = {r["key"]: _insert_run(session, r) for r in rows["runs"]}
-    src_id = {s["key"]: _insert_source(session, s, run_id) for s in rows["source_records"]}
+    """Idempotent insert of ImportRows (SCHEMA.md §1) + run-membership. Returns row counts."""
+    run_id = {r["key"]: _get_or_create_run(session, r) for r in rows["runs"]}
+    src_id = {s["key"]: _get_or_create_source(session, s, run_id) for s in rows["source_records"]}
+    src_to_run = {s["key"]: run_id.get(s["run_key"]) for s in rows["source_records"]}
 
     for n in rows["nodes"]:
         session.execute(
@@ -37,14 +46,21 @@ def load_import_rows(session: Session, rows: dict) -> dict:
             )
             .on_conflict_do_nothing(index_elements=["id"])
         )
+        rid = src_to_run.get(n["source_record_key"])
+        if rid is not None:
+            session.execute(
+                pg_insert(RunNode).values(run_id=rid, node_id=n["id"]).on_conflict_do_nothing()
+            )
 
-    # Collapse parallel edges to one weighted row (weight = #occurrences), preserving first-seen meta.
+    # Collapse parallel edges to one weighted row by SUMMING row weights. This unifies both
+    # importers: the legacy importer emits N parallel weight-1.0 rows (sum = N = #joint works),
+    # while discovery emits ONE pre-aggregated row carrying its own weight (sum = that weight).
     weight: Counter = Counter()
     first: dict = {}
     for e in rows["edges"]:
         key = (e["src_id"], e["dst_id"], e["type"])
         first.setdefault(key, e)
-        weight[key] += 1
+        weight[key] += e["weight"]
     for key, e in first.items():
         session.execute(
             pg_insert(Edge)
@@ -55,6 +71,14 @@ def load_import_rows(session: Session, rows: dict) -> dict:
             )
             .on_conflict_do_nothing(constraint="edge_uq")
         )
+        rid = src_to_run.get(e["source_record_key"])
+        edge_id = session.scalar(
+            select(Edge.id).where(Edge.src_id == key[0], Edge.dst_id == key[1], Edge.type == key[2])
+        )
+        if rid is not None and edge_id is not None:
+            session.execute(
+                pg_insert(RunEdge).values(run_id=rid, edge_id=edge_id).on_conflict_do_nothing()
+            )
 
     for rel in rows["relevance"]:
         session.execute(
@@ -66,6 +90,11 @@ def load_import_rows(session: Session, rows: dict) -> dict:
             .on_conflict_do_nothing(index_elements=["node_id", "run_id"])
         )
 
+    # Auto-publish the first run ever loaded (the legacy import) so the default view is unchanged;
+    # subsequent repopulation runs are NOT auto-published — they stay invisible until publish_run().
+    if len(run_id) == 1:
+        _maybe_set_initial_published(session, next(iter(run_id.values())))
+
     session.commit()
     return {
         "nodes": session.scalar(select(func.count()).select_from(Node)),
@@ -75,12 +104,32 @@ def load_import_rows(session: Session, rows: dict) -> dict:
     }
 
 
-def _insert_run(session: Session, r: dict) -> int:
-    """Get-or-create by seed so re-importing the same static data is idempotent (the legacy
-    run is a singleton). A genuinely new repopulation passes a distinct seed → a new run."""
-    existing = session.scalar(
-        select(RepopulationRun).where(RepopulationRun.seed == r["seed"])
+def get_published_run_id(session: Session) -> int | None:
+    value = session.scalar(select(AppState.value).where(AppState.key == PUBLISHED_RUN_KEY))
+    return int(value) if value is not None else None
+
+
+def publish_run(session: Session, run_id: int) -> None:
+    """Make `run_id` the default served snapshot."""
+    session.execute(
+        pg_insert(AppState)
+        .values(key=PUBLISHED_RUN_KEY, value=str(run_id))
+        .on_conflict_do_update(index_elements=["key"], set_={"value": str(run_id)})
     )
+    session.commit()
+
+
+def _maybe_set_initial_published(session: Session, run_id: int) -> None:
+    if get_published_run_id(session) is None:
+        session.execute(
+            pg_insert(AppState)
+            .values(key=PUBLISHED_RUN_KEY, value=str(run_id))
+            .on_conflict_do_nothing(index_elements=["key"])
+        )
+
+
+def _get_or_create_run(session: Session, r: dict) -> int:
+    existing = session.scalar(select(RepopulationRun).where(RepopulationRun.seed == r["seed"]))
     if existing is not None:
         return existing.id
     run = RepopulationRun(seed=r["seed"], status=r["status"])
@@ -89,13 +138,10 @@ def _insert_run(session: Session, r: dict) -> int:
     return run.id
 
 
-def _insert_source(session: Session, s: dict, run_id: dict) -> int:
-    """Get-or-create the (source, run) source_record so a re-import doesn't duplicate it."""
+def _get_or_create_source(session: Session, s: dict, run_id: dict) -> int:
     rid = run_id.get(s["run_key"])
     existing = session.scalar(
-        select(SourceRecord).where(
-            SourceRecord.source == s["source"], SourceRecord.run_id == rid
-        )
+        select(SourceRecord).where(SourceRecord.source == s["source"], SourceRecord.run_id == rid)
     )
     if existing is not None:
         return existing.id
@@ -108,19 +154,27 @@ def _insert_source(session: Session, s: dict, run_id: dict) -> int:
     return sr.id
 
 
-def graph_from_db(session: Session) -> dict:
-    """Reproduce the frontend graph from Postgres: query nodes/edges, expand weighted
-    COAUTHORED_WITH back to parallel paper links, serialize. Legacy influence comes from
-    node.attributes (verbatim), so the relevance map is unused here."""
+def graph_from_db(session: Session, run_id: int | None = None) -> dict:
+    """Reproduce the frontend graph from Postgres for a run snapshot. `run_id=None` serves the
+    published run (the legacy import by default); if nothing is published, serves all rows
+    (back-compat). Expands weighted COAUTHORED_WITH back to parallel paper links."""
+    effective = run_id if run_id is not None else get_published_run_id(session)
+
+    node_q = select(Node)
+    edge_q = select(Edge)
+    if effective is not None:
+        node_q = node_q.join(RunNode, RunNode.node_id == Node.id).where(RunNode.run_id == effective)
+        edge_q = edge_q.join(RunEdge, RunEdge.edge_id == Edge.id).where(RunEdge.run_id == effective)
+
     node_rows = [
         {
             "id": n.id, "kind": n.kind, "name": n.name, "val": n.val,
             "attributes": n.attributes or {}, "ai_description": n.ai_description,
         }
-        for n in session.scalars(select(Node)).all()
+        for n in session.scalars(node_q).all()
     ]
     edge_rows: list[dict] = []
-    for e in session.scalars(select(Edge)).all():
+    for e in session.scalars(edge_q).all():
         reps = int(e.weight) if e.type == "COAUTHORED_WITH" else 1
         edge_rows.extend(
             {"src_id": e.src_id, "dst_id": e.dst_id, "type": e.type} for _ in range(reps)

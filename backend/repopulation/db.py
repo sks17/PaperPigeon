@@ -8,10 +8,18 @@ migration (migrations/0001_initial.sql) is the DDL of record — we do NOT use c
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+
+MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+
+
+def migration_files() -> list[Path]:
+    """SQL migrations in apply order (lexical: 0001_, 0002_, ...)."""
+    return sorted(MIGRATIONS_DIR.glob("*.sql"))
 
 
 def normalize_url(url: str) -> str:

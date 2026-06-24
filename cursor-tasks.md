@@ -1,130 +1,82 @@
 # Cursor Task Pool — parallel, scoped, file-disjoint
 
-Up to **10 Cursor agents loop** here, each grabbing the next `open` task. **Read `AGENTS.md` and
-`backend/repopulation/SCHEMA.md` first.** The schema (`backend/repopulation/migrations/0001_initial.sql`)
-and `SCHEMA.md` are the source of truth; the stubs you fill already exist with signatures + contracts.
+Up to **10 Cursor agents loop** here, each grabbing the next `open` task. **Read `AGENTS.md`,
+`backend/repopulation/SCHEMA.md`, and `backend/repopulation/DISCOVERY.md` first.** The stubs you
+fill already exist with signatures + contracts.
 
-## Rules (non-negotiable — see 03-agent-structure.md)
-- **Disjoint `Files allowed`:** no two `open`/`claimed` tasks may touch the same file.
-- **No meta work:** ❌ integrating external APIs (no HTTP clients / no `requests`/`httpx`/`urllib`,
-  no API keys) · ❌ running commands (installs/migrations/deploys/tests) · ❌ planning/architecture ·
-  ❌ schema/migration changes. The main thread wires APIs, runs migrations, and runs every test.
-- **Strictly additive:** never change what the existing graph renders. Do not edit existing
-  `src/`, `backend/app.py`, `backend/graph_core.py`, or any existing file outside your `Files allowed`.
-- **Pure functions stay pure:** no DB, file, or network I/O in the importer/serializer/parsers.
-- **Acceptance must be checkable WITHOUT running anything.** Finish → set `done` → grab next `open`.
-
-## Task format
-```
-### TASK-ID: short-name        [status: open | claimed | done]
-Layer: … | Branch: agent/… | Depends on: …
-Goal / Files allowed / Files forbidden / Acceptance / Do NOT
-```
+## Rules (non-negotiable)
+- **Disjoint `Files allowed`:** no two `open`/`claimed` tasks touch the same file.
+- **No meta work:** ❌ integrating external APIs (no HTTP clients / `requests`/`httpx`/`urllib`, no
+  keys) · ❌ running commands · ❌ planning/architecture · ❌ schema/migration changes. The main
+  thread wires APIs/clients, runs migrations, runs every test.
+- **Pure functions stay pure:** no DB/file/network/wall-clock in transforms (`build_rows`,
+  `relevance/score`). Pass `current_year` in; never read the clock.
+- **Strictly additive:** never change what the existing graph renders.
+- **Acceptance checkable WITHOUT running anything.** Finish → set `done` → grab next `open`.
 
 ---
 
-### P1-T01: orm-models        [status: done]
-Layer: graph-schema · Branch: agent/graph-schema · Depends on: —
-Goal:            SQLAlchemy 2.0 typed models mirroring `migrations/0001_initial.sql` exactly.
-Files allowed:   backend/repopulation/models/nodes.py, backend/repopulation/models/edges.py,
-                 backend/repopulation/models/provenance.py
-Files forbidden: the SQL migration (source of truth — read only), everything else.
-Acceptance:      Each table in 0001_initial.sql (node, edge, source_record, repopulation_run,
-                 relevance, embedding) has a model with matching column names, types, nullability,
-                 CHECK constraints, PKs, the UNIQUE(src_id,dst_id,type) edge constraint, and the
-                 partial-unique dedup indexes (orcid/openalex_id/ror). No engine/session/connection
-                 code, no DDL execution. Reviewable by reading against the SQL.
-Do NOT:          open DB connections · run migrations · edit the SQL · integrate APIs.
+## Phase 1 — COMPLETE ✅
+All P1 tasks merged and verified (importer/serializer/models/parsers + tests; DB load/serve; new
+FastAPI endpoint; 27 backend tests + 1 Playwright e2e green).
 
-### P1-T02: graph-serializer        [status: done]
-Layer: api · Branch: agent/backend-api · Depends on: —
-Goal:            Implement `serialize_graph(nodes, edges, relevance_by_node)` per SCHEMA.md §1/§3/§4.
-Files allowed:   backend/repopulation/serializers/graph_data.py
-Files forbidden: everything else.
-Acceptance:      Researcher nodes emit all 12 keys (null where absent) in the documented shape; lab
-                 nodes emit exactly 4 keys; edges map rich→render via RICH_TO_RENDER_LINK_TYPE and
-                 unmapped types are skipped; node + link order preserved. Pure (no I/O). Verifiable
-                 by reading against SCHEMA.md §4.
-Do NOT:          read files/DB/network · change the contract · edit the importer.
+## Phase 2 — Repopulation v1 (live discovery, relevance) — see DISCOVERY.md
 
-### P1-T03: cache-importer        [status: done]
+### P2-T01: build-import-rows        [status: done]
 Layer: engine · Branch: agent/repopulation-engine · Depends on: —
-Goal:            Implement `cache_to_rows(graph)` per SCHEMA.md §1/§2/§3 (legacy import).
-Files allowed:   backend/repopulation/importer/cache_to_rows.py
+Goal:            Implement `build_import_rows(institution, authors, seed, run_key, source_keys)`
+                 per DISCOVERY.md — parsed OpenAlex/ROR dataclasses → ImportRows.
+Files allowed:   backend/repopulation/discovery/build_rows.py
 Files forbidden: everything else.
-Acceptance:      Returns the ImportRows dict: one legacy run_row + one legacy source_record_row;
-                 researcher/lab node_rows (attributes per SCHEMA.md §2, about→ai_description with
-                 model "legacy_dynamodb", influence NOT stored on the node); edge_rows via
-                 RENDER_TO_RICH_EDGE_TYPE (weight 1.0, directed); relevance_rows only for
-                 researchers whose influence is not None. Order-preserving; idempotent at data level.
-                 Pure (receives the parsed dict; no file/DB/network).
-Do NOT:          read the cache file itself · touch the serializer · integrate APIs.
+Acceptance:      Emits institution/researcher/topic/paper nodes (NODE_VAL convention, dedup keys
+                 orcid/openalex_id/ror/normalized_name) and AFFILIATED_WITH / AUTHORED / WORKS_ON
+                 (weight=topic share) / COAUTHORED_WITH (weight=#joint works) edges, each with a
+                 source_record_key; one source_record per source ('openalex','ror'); relevance=[].
+                 Pure (no HTTP/DB/clock). Verifiable by reading against DISCOVERY.md + SCHEMA.md §1–2.
+Do NOT:          import clients/* or any HTTP lib · access a DB · read the clock · edit the loader.
 
-### P1-T04: source-parsers        [status: done]
-Layer: engine · Branch: agent/repopulation-engine · Depends on: —
-Goal:            Pure parsers over SAVED OpenAlex/ROR fixtures → internal @dataclass types.
-Files allowed:   backend/repopulation/sources/openalex_parse.py,
-                 backend/repopulation/sources/ror_parse.py,
-                 backend/repopulation/tests/fixtures/*.json (add small, realistic fixtures)
+### P2-T02: relevance-scoring        [status: done]
+Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: —
+Goal:            Implement `cosine`, `recency_decay`, `score_relevance` per DISCOVERY.md.
+Files allowed:   backend/repopulation/relevance/score.py
 Files forbidden: everything else.
-Acceptance:      Dataclasses + parse functions extract the fields named in each stub (OpenAlex:
-                 id, ids.orcid, display_name, last_known_institution id/ror, topics, recent works,
-                 counts, abstract_inverted_index handling; ROR: id, name, country, aliases,
-                 relationships). NO HTTP client import, NO keys, NO rate-limit logic. Reviewable
-                 by reading parser vs. fixture.
-Do NOT:          import requests/httpx/urllib · add auth · call the network.
+Acceptance:      score = w1*cosine + w2*recency_decay(current_year passed in) + w3*log1p(volume);
+                 returns relevance_row dicts (SCHEMA.md §2) scoped to run_key with `components`
+                 populated; cosine handles zero/empty vectors; no wall-clock. Pure.
+Do NOT:          read the clock · access network/DB · import clients/*.
 
-### P1-T05: test-graph-contract        [status: done]
-Layer: api (test) · Branch: agent/backend-api · Depends on: —
-Goal:            Round-trip golden test: serialize(cache_to_rows(cache)) reproduces the cache.
-Files allowed:   backend/repopulation/tests/test_graph_contract.py
-Files forbidden: everything else.
-Acceptance:      Loads public/graph_cache.json (read-only), runs it through cache_to_rows then
-                 serialize_graph (passing the legacy relevance map), and asserts STRUCTURAL equality
-                 with the original — same node order, same link order, same fields/values (compare
-                 parsed objects; key order irrelevant). Also assert counts 298 researcher / 25 lab /
-                 paper 633 / advisor 190 / researcher_lab 220.
-Do NOT:          touch a DB · edit impl files · assert on JSON byte/key order.
-
-### P1-T06: test-provenance-integrity        [status: done]
-Layer: graph-data (test) · Branch: agent/graph-schema · Depends on: —
-Goal:            Assert provenance + edge integrity on importer output.
-Files allowed:   backend/repopulation/tests/test_provenance_integrity.py
-Files forbidden: everything else.
-Acceptance:      On cache_to_rows(public/graph_cache.json): every node_row and edge_row has a
-                 `source_record_key` that resolves to a returned source_record_row; every edge_row's
-                 src_id/dst_id exists among node_rows (no dangling edges); every edge_row has a
-                 rich `type`, a numeric `weight`, and `directed` set.
-Do NOT:          touch a DB · edit impl files.
-
-### P1-T07: test-importer-idempotency        [status: done]
+### P2-T03: test-build-rows        [status: done]
 Layer: engine (test) · Branch: agent/repopulation-engine · Depends on: —
-Goal:            Assert the importer is order-preserving and idempotent at the data level.
-Files allowed:   backend/repopulation/tests/test_importer_idempotency.py
+Goal:            Test build_import_rows over the existing parser fixtures.
+Files allowed:   backend/repopulation/tests/test_build_rows.py
 Files forbidden: everything else.
-Acceptance:      cache_to_rows(x) == cache_to_rows(x) (stable); node 'id' values are unique;
-                 (src_id,dst_id,type) tuples are unique across edge_rows; node/edge order matches
-                 the input cache order. Use the real cache and/or a small inline fixture.
-Do NOT:          touch a DB · edit impl files.
+Acceptance:      Parses tests/fixtures/openalex_author_fixture.json + ror_organization_fixture.json
+                 via the existing parsers, calls build_import_rows, and asserts: node kinds/vals
+                 correct; every node/edge has a source_record_key resolving to a returned
+                 source_record; COAUTHORED_WITH weight = #joint works; WORKS_ON present; dedup keys
+                 populated; relevance == []. No DB/network.
+Do NOT:          hit a DB/network · edit impl files.
 
-### P1-T08: test-migration-additive        [status: done]
-Layer: infra (test) · Branch: agent/infra-cicd · Depends on: —
-Goal:            Static guard that migration 0001 is additive-only.
-Files allowed:   backend/repopulation/tests/test_migration_additive.py
+### P2-T04: test-relevance        [status: done]
+Layer: engine (test) · Branch: agent/ai-descriptions-rag · Depends on: —
+Goal:            Test the relevance scoring math.
+Files allowed:   backend/repopulation/tests/test_relevance_score.py
 Files forbidden: everything else.
-Acceptance:      Reads migrations/0001_initial.sql as text and asserts NO **statement-level**
-                 destructive DDL — match `DROP TABLE|SCHEMA|INDEX|COLUMN|CONSTRAINT`, `TRUNCATE`,
-                 `DELETE FROM`, `ALTER ... DROP`. MUST NOT false-positive on FK referential actions
-                 `ON DELETE CASCADE` / `ON DELETE SET NULL` (those are not destructive). Also assert
-                 every CREATE is guarded (`IF NOT EXISTS`) and all objects are under the `repop` schema.
-Do NOT:          execute SQL · connect to a DB · edit the migration.
+Acceptance:      cosine of identical vectors == 1.0, orthogonal == 0.0, zero-vector safe; recency
+                 decays with age and is 0.0 for unknown year; score_relevance returns one row per
+                 node with score in a sane range and components summing per the weights; current_year
+                 passed in (no clock). Inline fixtures.
+Do NOT:          read the clock · hit a DB/network · edit impl files.
 
-### P1-T09: e2e-graph-smoke        [status: done]
-Layer: frontend (test) · Branch: agent/backend-api · Depends on: —
-Goal:            Playwright smoke proving the existing graph still renders (run by main thread).
-Files allowed:   e2e/graph-smoke.spec.ts
-Files forbidden: everything else (do not add deps or configs — the main thread wires Playwright).
-Acceptance:      Spec navigates to the app root, waits for the graph canvas, asserts the graph data
-                 request to /api/graph/data returns ok and a non-empty nodes array, and asserts no
-                 uncaught console errors. Written against @playwright/test API; selectors documented.
-Do NOT:          run the test · install Playwright · change vite/eslint config · edit src/.
+### P2-T05: test-snapshot-isolation        [status: done]
+Layer: graph-data (test) · Branch: agent/graph-schema · Depends on: —
+Goal:            Prove a second (unpublished) run does not change the default served graph.
+Files allowed:   backend/repopulation/tests/test_snapshot_isolation.py
+Files forbidden: everything else.
+Acceptance:      Using pgserver (pytest.importorskip) + all migrations: load the legacy cache (auto-
+                 published) then load a small SECOND ImportRows under a different run/seed; assert
+                 graph_from_db(session) (default) still returns the legacy 323/1043; assert
+                 graph_from_db(session, run_id=<second>) returns ONLY the second run's nodes/edges;
+                 assert publish_run(second) flips the default. Mirror the pgserver fixture pattern in
+                 tests/test_api_graph_contract.py.
+Do NOT:          edit impl files · integrate APIs.

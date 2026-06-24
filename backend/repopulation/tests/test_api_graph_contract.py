@@ -21,12 +21,11 @@ import pgserver  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend.repopulation import api as api_module  # noqa: E402
-from backend.repopulation.db import make_engine, make_session_factory  # noqa: E402
+from backend.repopulation.db import make_engine, make_session_factory, migration_files  # noqa: E402
 from backend.repopulation.importer.cache_to_rows import cache_to_rows  # noqa: E402
 from backend.repopulation.loader import load_import_rows  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
-MIGRATION = ROOT / "backend" / "repopulation" / "migrations" / "0001_initial.sql"
 CACHE = ROOT / "public" / "graph_cache.json"
 
 
@@ -34,7 +33,8 @@ CACHE = ROOT / "public" / "graph_cache.json"
 def client(tmp_path_factory: pytest.TempPathFactory) -> TestClient:
     srv = pgserver.get_server(str(tmp_path_factory.mktemp("pg")))
     try:
-        srv.psql(MIGRATION.read_text(encoding="utf-8"))
+        for migration in migration_files():
+            srv.psql(migration.read_text(encoding="utf-8"))
         factory = make_session_factory(make_engine(srv.get_uri()))
         with factory() as session:
             load_import_rows(session, cache_to_rows(json.loads(CACHE.read_text(encoding="utf-8"))))

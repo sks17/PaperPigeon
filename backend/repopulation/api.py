@@ -51,9 +51,11 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/graph/data")
-    def graph_data(session: Session = Depends(get_session)) -> dict:
-        """Byte-compatible replacement for the legacy GET /api/graph/data, served from Postgres."""
-        return graph_from_db(session)
+    def graph_data(run: int | None = None, session: Session = Depends(get_session)) -> dict:
+        """Byte-compatible replacement for the legacy GET /api/graph/data, served from Postgres.
+        `?run=<id>` serves that repopulation run's snapshot; omitted serves the published run
+        (the legacy graph by default), so existing behavior is unchanged."""
+        return graph_from_db(session, run_id=run)
 
     return app
 

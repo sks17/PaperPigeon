@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS repop.repopulation_run (
 CREATE TABLE IF NOT EXISTS repop.source_record (
     id           bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source       text NOT NULL
-                 CHECK (source IN ('openalex','crossref','arxiv','pubmed','scrape','ai','legacy_cache')),
+                 CHECK (source IN ('openalex','ror','crossref','arxiv','pubmed','scrape','ai','legacy_cache')),
     source_url   text,
     retrieved_at timestamptz NOT NULL DEFAULT now(),
     confidence   double precision CHECK (confidence >= 0 AND confidence <= 1),

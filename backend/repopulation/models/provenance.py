@@ -55,7 +55,7 @@ class SourceRecord(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "source IN ('openalex','crossref','arxiv','pubmed','scrape','ai','legacy_cache')",
+            "source IN ('openalex','ror','crossref','arxiv','pubmed','scrape','ai','legacy_cache')",
             name="source_record_source_check",
         ),
         CheckConstraint(
