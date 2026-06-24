@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
+from backend.repopulation.clients.budget import OPENALEX_LIST_COST
 from backend.repopulation.clients.http import HttpClient
 
 OPENALEX_HOST = "api.openalex.org"
@@ -22,9 +23,10 @@ def short_id(entity_id: str) -> str:
 class OpenAlexClient:
     BASE = "https://api.openalex.org"
 
-    def __init__(self, http: HttpClient, api_key: str | None = None) -> None:
+    def __init__(self, http: HttpClient, api_key: str | None = None, budget=None) -> None:
         self._http = http
         self._api_key = api_key
+        self._budget = budget
 
     def _params(self, **kw) -> dict:
         if self._api_key:
@@ -106,6 +108,10 @@ class OpenAlexClient:
         cursor = "*"
         pages = 0
         while cursor and pages < max_pages:
+            # List+filter requests are the billable OpenAlex op; charge before the call so an
+            # over-budget sweep stops cleanly (single-entity lookups elsewhere are $0).
+            if self._budget is not None:
+                self._budget.charge(OPENALEX_LIST_COST, f"openalex {entity} page")
             params = self._params(filter=filter, cursor=cursor)
             params["per-page"] = per_page
             if select:

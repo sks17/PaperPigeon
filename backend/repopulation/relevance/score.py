@@ -3,7 +3,7 @@
 Implement `score_relevance` per DISCOVERY.md:
   relevance = w1*cosine(seed_embedding, node_embedding)
             + w2*recency_decay(last_active_year)
-            + w3*log1p(output_or_citation_volume)
+            + w3*normalized_log1p(output_or_citation_volume)
 
 PURE: no network, no DB, NO wall-clock (Date/now is forbidden in pure code) — the caller passes
 `current_year`. Returns relevance_row dicts (SCHEMA.md §2) scoped to `run_key`, with `components`
@@ -72,7 +72,7 @@ def score_relevance(
 
     relevance = w1*cosine(seed_embedding, node_embedding)
               + w2*recency_decay(last_active_year, current_year)
-              + w3*log1p(output_or_citation_volume)
+              + w3*normalized_log1p(output_or_citation_volume)
 
     node_meta[node_id] = {"last_year": int|None, "volume": number} (missing entries → defaults).
     `components` is populated for explainability (SQL `repop.relevance.components` jsonb).
@@ -82,14 +82,20 @@ def score_relevance(
     w_recency = weights.get("recency", 0.0)
     w_volume = weights.get("volume", 0.0)
 
+    raw_volume_by_node = {
+        node_id: math.log1p((node_meta.get(node_id) or {}).get("volume") or 0)
+        for node_id in node_vectors
+    }
+    max_raw_volume = max(raw_volume_by_node.values(), default=0.0)
+
     rows: list[dict] = []
     for node_id, vector in node_vectors.items():
         meta = node_meta.get(node_id) or {}
 
         cos = cosine(seed_embedding, vector)
         rec = recency_decay(meta.get("last_year"), current_year)
-        volume = meta.get("volume") or 0
-        vol = math.log1p(volume)
+        raw_vol = raw_volume_by_node[node_id]
+        vol = raw_vol / max_raw_volume if max_raw_volume > 0.0 else 0.0
 
         score = w_cosine * cos + w_recency * rec + w_volume * vol
 
@@ -101,6 +107,7 @@ def score_relevance(
                 "cosine": cos,
                 "recency": rec,
                 "volume": vol,
+                "volume_raw": raw_vol,
                 "weights": dict(weights),
             },
         })

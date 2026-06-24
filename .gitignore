@@ -95,6 +95,7 @@ venv/
 .venv/
 .pg/
 .raw_cache/
+.budget_ledger.json
 __pycache__/
 *.pyc
 *.pyo

@@ -3,7 +3,7 @@
 Exercises the pure transforms in backend/repopulation/relevance/score.py against the contract in
 DISCOVERY.md (§Relevance) and SCHEMA.md §2:
 
-    relevance = w_cosine*cosine + w_recency*recency_decay(last_year) + w_volume*log1p(volume)
+    relevance = w_cosine*cosine + w_recency*recency_decay(last_year) + w_volume*normalized_log1p(volume)
 
 All inputs are inline fixtures; `current_year` is always passed in (no wall-clock). No DB / network.
 Run by the main thread (`python -m pytest -q` from the project root).
@@ -131,6 +131,30 @@ def test_components_sum_per_weights_to_score() -> None:
         assert weighted_sum == pytest.approx(row["score"])
 
 
+def test_volume_component_is_batch_normalized_and_keeps_raw_value() -> None:
+    seed, vectors, meta = _fixture()
+    rows = score_relevance(seed, vectors, meta, RUN_KEY, CURRENT_YEAR)
+    by_id = {row["node_id"]: row for row in rows}
+
+    assert by_id["n_match"]["components"]["volume"] == pytest.approx(1.0)
+    assert by_id["n_match"]["components"]["volume_raw"] == pytest.approx(math.log1p(10))
+    assert by_id["n_orthogonal"]["components"]["volume"] == pytest.approx(0.0)
+    assert by_id["n_orthogonal"]["components"]["volume_raw"] == pytest.approx(0.0)
+
+
+def test_volume_component_is_zero_when_batch_max_is_zero() -> None:
+    rows = score_relevance(
+        seed_embedding=[1.0, 0.0],
+        node_vectors={"n_zero": [1.0, 0.0]},
+        node_meta={"n_zero": {"last_year": CURRENT_YEAR, "volume": 0}},
+        run_key=RUN_KEY,
+        current_year=CURRENT_YEAR,
+    )
+
+    assert rows[0]["components"]["volume"] == 0.0
+    assert rows[0]["components"]["volume_raw"] == 0.0
+
+
 def test_score_matches_formula_for_known_inputs() -> None:
     seed, vectors, meta = _fixture()
     rows = score_relevance(seed, vectors, meta, RUN_KEY, CURRENT_YEAR)
@@ -140,12 +164,12 @@ def test_score_matches_formula_for_known_inputs() -> None:
     expected_match = (
         w["cosine"] * 1.0
         + w["recency"] * 1.0
-        + w["volume"] * math.log1p(10)
+        + w["volume"] * 1.0
     )
     expected_orthogonal = (
         w["cosine"] * 0.0
         + w["recency"] * math.exp(-(CURRENT_YEAR - 2010) / DEFAULT_HALFLIFE_YEARS)
-        + w["volume"] * math.log1p(0)
+        + w["volume"] * 0.0
     )
     assert by_id["n_match"]["score"] == pytest.approx(expected_match)
     assert by_id["n_orthogonal"]["score"] == pytest.approx(expected_orthogonal)

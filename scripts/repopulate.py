@@ -24,6 +24,7 @@ load_dotenv(ROOT / ".env")
 
 import os  # noqa: E402
 
+from backend.repopulation.clients.budget import DailyBudget  # noqa: E402
 from backend.repopulation.clients.embeddings import EmbeddingsClient  # noqa: E402
 from backend.repopulation.clients.http import HttpClient  # noqa: E402
 from backend.repopulation.clients.openalex import OpenAlexClient  # noqa: E402
@@ -56,12 +57,19 @@ def main() -> int:
     store = LocalRawStore(ROOT / ".raw_cache")
     http = HttpClient(store, {"api.ror.org", "api.openalex.org", "openrouter.ai"},
                       f"PaperPigeon/0.2 (mailto:{CONTACT})")
+    cap = os.getenv("PAPERPIGEON_BUDGET_PRO_DAILY_USD")
+    budget = DailyBudget(
+        float(cap) if cap else None, ROOT / ".budget_ledger.json",
+        datetime.now().date().isoformat(),
+    )
+    print(f"daily budget: cap=${budget.cap} spent_today=${budget.spent:.4f}")
+
     ror = RorClient(http)
-    openalex = OpenAlexClient(http, api_key=os.getenv("OPENALEX_API_KEY"))
+    openalex = OpenAlexClient(http, api_key=os.getenv("OPENALEX_API_KEY"), budget=budget)
 
     embeddings = None
     if not args.no_embeddings and os.getenv("OPENROUTER_API_KEY"):
-        embeddings = EmbeddingsClient(http, os.getenv("OPENROUTER_API_KEY"))
+        embeddings = EmbeddingsClient(http, os.getenv("OPENROUTER_API_KEY"), budget=budget)
 
     pgdata = ROOT / ".pg"
     pgdata.mkdir(exist_ok=True)
@@ -93,7 +101,8 @@ def main() -> int:
         for k, v in summary.items():
             print(f"  {k}: {v}")
         print(f"  openalex/ror live_calls: {http.live_calls}  cache_hits: {http.cache_hits}")
-        print(f"  est. OpenAlex cost: ${est_cost:.4f} (free budget $1/day)")
+        print(f"  est. OpenAlex cost: ${est_cost:.4f}")
+        print(f"  budget spent today: ${budget.spent:.4f} / ${budget.cap}  remaining: ${budget.remaining():.4f}")
 
         with Session() as s:
             default_graph = graph_from_db(s)

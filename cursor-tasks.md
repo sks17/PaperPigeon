@@ -89,7 +89,7 @@ OpenRouter APIs. These tasks are pure-code refinements + tests Cursor authors an
 Clients take an injectable `http` (duck-typed get_json/post_json) — tests pass a STUB http returning
 canned dicts; never make real network calls.
 
-### P2-T06: relevance-volume-normalization        [status: open]
+### P2-T06: relevance-volume-normalization        [status: done]
 Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: —
 Goal:            Normalize the volume term so the three relevance components are comparable.
 Files allowed:   backend/repopulation/relevance/score.py
@@ -101,7 +101,7 @@ Acceptance:      log1p(volume) currently is unbounded (~0–8) while cosine/rece
                  Update tests/test_relevance_score.py expectations accordingly.
 Do NOT:          read the clock · network/DB · import clients/*.
 
-### P2-T07: test-http-client        [status: open]
+### P2-T07: test-http-client        [status: done]
 Layer: infra (test) · Branch: agent/infra-cicd · Depends on: —
 Goal:            Unit-test the polite HTTP client behaviors with httpx.MockTransport.
 Files allowed:   backend/repopulation/tests/test_http_client.py
@@ -112,7 +112,7 @@ Acceptance:      Build HttpClient with a httpx.MockTransport (inject via the und
                  write-through then a second call is a cache hit (live_calls unchanged, cache_hits++).
 Do NOT:          make real network calls · edit impl files.
 
-### P2-T08: test-openalex-client        [status: open]
+### P2-T08: test-openalex-client        [status: done]
 Layer: engine (test) · Branch: agent/backend-api · Depends on: —
 Goal:            Budget-guard + pagination/assembly tests via a STUB http.
 Files allowed:   backend/repopulation/tests/test_openalex_client.py
@@ -124,7 +124,7 @@ Acceptance:      Inject a stub http recording every (url, params). Assert iter_a
                  Assert discover_authors attaches works to authors via authorships (recent_works).
 Do NOT:          real network · edit impl files.
 
-### P2-T09: test-run-repopulation        [status: open]
+### P2-T09: test-run-repopulation        [status: done]
 Layer: engine (test) · Branch: agent/repopulation-engine · Depends on: —
 Goal:            End-to-end run_repopulation with stub clients + pgserver.
 Files allowed:   backend/repopulation/tests/test_run_repopulation.py
@@ -136,7 +136,7 @@ Acceptance:      pgserver (importorskip) + all migrations + legacy loaded. Stub 
                  researchers; relevance rows == #researchers; re-running the same seed is idempotent.
 Do NOT:          real network · edit impl files.
 
-### P2-T10: ror-canonical-name        [status: open]
+### P2-T10: ror-canonical-name        [status: done]
 Layer: engine · Branch: agent/graph-schema · Depends on: —
 Goal:            Prefer the ROR `ror_display` name (fixes localized names, e.g. "Universidad de Washington").
 Files allowed:   backend/repopulation/sources/ror_parse.py, backend/repopulation/tests/test_ror_parse.py

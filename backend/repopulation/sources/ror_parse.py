@@ -64,15 +64,26 @@ def parse_ror_organizations(payload: dict[str, Any]) -> tuple[RorOrganization, .
 
 def _canonical_name(payload: dict[str, Any]) -> str:
     names = payload.get("names", [])
-    if isinstance(names, list):
-        for name in names:
-            if not isinstance(name, dict):
-                continue
-            types = name.get("types", [])
-            if "ror_display" in types:
-                return str(name["value"])
-            if "label" in types:
-                return str(name["value"])
+    candidates = (
+        [name for name in names if isinstance(name, dict)]
+        if isinstance(names, list)
+        else []
+    )
+
+    # Global priority pass: a `ror_display` entry anywhere wins over a `label` entry,
+    # which wins over the first usable name. Returning on the first typed match (the old
+    # behavior) let a localized label preceding the ror_display entry win incorrectly.
+    for preferred_type in ("ror_display", "label"):
+        for name in candidates:
+            if preferred_type in (name.get("types") or []):
+                value = _optional_str(name.get("value"))
+                if value:
+                    return value
+
+    for name in candidates:
+        value = _optional_str(name.get("value"))
+        if value:
+            return value
 
     return str(payload["name"])
 
