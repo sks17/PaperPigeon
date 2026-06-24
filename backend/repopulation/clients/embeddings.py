@@ -1,7 +1,9 @@
 """Embeddings client — OpenRouter, openai/text-embedding-3-small (1536d). Main-thread code.
 
 1536d matches the repop.embedding pgvector column (no migration). Batched + raw-cached (re-embedding
-identical text is a cache hit). Budget is bounded by OPENROUTER_BUDGET (enforced by the caller).
+identical text is a cache hit). Spend is currently bounded only indirectly — the number of texts is
+capped by the discovery page caps (<= max_author_pages * 200 researchers). A hard OPENROUTER_BUDGET
+dollar ceiling is NOT yet enforced here (TODO: wire a pre-call cost cap); do not rely on it.
 """
 from __future__ import annotations
 

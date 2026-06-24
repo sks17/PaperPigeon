@@ -17,6 +17,12 @@ import httpx
 from backend.repopulation.clients.rawstore import RawStore, cache_key
 
 _RETRYABLE = {429, 500, 502, 503, 504}
+# Auth params/headers must never be keyed-on or written to the raw store (secret leakage to disk/S3).
+_SECRET_PARAMS = {"api_key"}
+
+
+def _safe_params(params: dict | None) -> dict:
+    return {k: v for k, v in (params or {}).items() if k not in _SECRET_PARAMS}
 
 
 class SSRFError(ValueError):
@@ -68,7 +74,8 @@ class HttpClient:
     def get_json(self, url: str, params: dict | None = None, *, use_cache: bool = True) -> tuple:
         """GET JSON. Returns (body, raw_key). Serves from the RawStore on a cache hit."""
         host = self._check_ssrf(url)
-        key = cache_key(url, params)
+        safe = _safe_params(params)  # never key on / store the api_key
+        key = cache_key(url, safe)
         if use_cache:
             cached = self._raw.get(key)
             if cached is not None:
@@ -90,7 +97,7 @@ class HttpClient:
             resp.raise_for_status()
             body = resp.json()
             self._raw.put(
-                key, {"url": url, "params": params, "status": resp.status_code, "body": body}
+                key, {"url": url, "params": safe, "status": resp.status_code, "body": body}
             )
             return body, key
 
