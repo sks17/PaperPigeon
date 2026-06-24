@@ -1,0 +1,80 @@
+name: CI
+
+# Skeleton CI for Paper Pigeon. Matches 04-infrastructure-security-and-roadmap.md:
+# secret-scan (gitleaks) + dependency-audit are GATES; frontend typecheck/build/lint
+# protect the "existing graph keeps working at every step" guarantee. Backend test
+# jobs are stubbed and wired in by the main thread as each layer lands (no test-runner
+# subagents — full output reaches the thread that fixes failures).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: gitleaks (secret scan gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  frontend:
+    name: frontend typecheck + build + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build   # tsc -b (typecheck gate) + vite build
+
+  dependency-audit:
+    name: dependency audit (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true   # advisory until the team triages a baseline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit && pip-audit -r requirements.txt || true
+
+  backend-tests:
+    name: backend tests (stub — wired in per layer)
+    runs-on: ubuntu-latest
+    if: false   # flip to true once the Repopulation Engine has its first pytest suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q

@@ -1,0 +1,6 @@
+# Repopulation Engine runtime deps (separate from the legacy Flask app's requirements.txt).
+SQLAlchemy>=2.0,<3.0
+pgvector>=0.3.0
+psycopg[binary]>=3.2
+fastapi>=0.115
+uvicorn[standard]>=0.30

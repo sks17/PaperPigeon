@@ -1,0 +1,80 @@
+{
+  "id": "https://openalex.org/A5072005348",
+  "ids": {
+    "openalex": "https://openalex.org/A5072005348",
+    "orcid": "https://orcid.org/0000-0002-1825-0097"
+  },
+  "display_name": "Ada Lovelace",
+  "last_known_institution": {
+    "id": "https://openalex.org/I201448701",
+    "ror": "https://ror.org/01an7q238",
+    "display_name": "University of Washington"
+  },
+  "topics": [
+    {
+      "id": "https://openalex.org/T10191",
+      "display_name": "Human Computer Interaction",
+      "score": 0.96,
+      "subfield": {
+        "display_name": "Human-Computer Interaction"
+      },
+      "field": {
+        "display_name": "Computer Science"
+      },
+      "domain": {
+        "display_name": "Physical Sciences"
+      }
+    }
+  ],
+  "works_count": 42,
+  "cited_by_count": 1337,
+  "summary_stats": {
+    "h_index": 18,
+    "i10_index": 27
+  },
+  "recent_works": [
+    {
+      "id": "https://openalex.org/W2741809807",
+      "doi": "https://doi.org/10.1145/example",
+      "title": "Grounded Research Graphs",
+      "publication_year": 2025,
+      "cited_by_count": 12,
+      "authorships": [
+        {
+          "author_position": "first",
+          "institutions": [
+            {
+              "id": "https://openalex.org/I201448701",
+              "ror": "https://ror.org/01an7q238",
+              "display_name": "University of Washington"
+            }
+          ]
+        }
+      ],
+      "abstract_inverted_index": {
+        "Grounded": [
+          0
+        ],
+        "graphs": [
+          2
+        ],
+        "need": [
+          3
+        ],
+        "evidence": [
+          4
+        ],
+        "research": [
+          1
+        ]
+      },
+      "topics": [
+        {
+          "id": "https://openalex.org/T10836",
+          "display_name": "Knowledge Graphs",
+          "score": 0.87
+        }
+      ]
+    }
+  ]
+}

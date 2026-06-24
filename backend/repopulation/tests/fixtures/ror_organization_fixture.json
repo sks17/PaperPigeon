@@ -1,0 +1,47 @@
+{
+  "id": "https://ror.org/01an7q238",
+  "names": [
+    {
+      "value": "University of Washington",
+      "types": [
+        "ror_display",
+        "label"
+      ],
+      "lang": "en"
+    },
+    {
+      "value": "UW",
+      "types": [
+        "acronym"
+      ],
+      "lang": "en"
+    },
+    {
+      "value": "U Washington",
+      "types": [
+        "alias"
+      ],
+      "lang": "en"
+    }
+  ],
+  "locations": [
+    {
+      "geonames_details": {
+        "country_name": "United States",
+        "country_code": "US"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "type": "Parent",
+      "id": "https://ror.org/00cvxb145",
+      "label": "University of Washington System"
+    },
+    {
+      "type": "Child",
+      "id": "https://ror.org/02xf1q489",
+      "label": "Allen Institute for AI"
+    }
+  ]
+}
