@@ -23,7 +23,7 @@ from backend.repopulation.models.membership import (
     RunEdge,
     RunNode,
 )
-from backend.repopulation.models.nodes import Node, Relevance, RepopulationRun
+from backend.repopulation.models.nodes import Embedding, Node, Relevance, RepopulationRun
 from backend.repopulation.models.provenance import SourceRecord
 from backend.repopulation.serializers.graph_data import serialize_graph
 
@@ -88,6 +88,14 @@ def load_import_rows(session: Session, rows: dict) -> dict:
                 score=rel["score"], components=rel["components"],
             )
             .on_conflict_do_nothing(index_elements=["node_id", "run_id"])
+        )
+
+    # pgvector embeddings (optional — present only on repopulation runs that embedded nodes).
+    for emb in rows.get("embeddings", []):
+        session.execute(
+            pg_insert(Embedding)
+            .values(node_id=emb["node_id"], model=emb["model"], embedding=emb["embedding"])
+            .on_conflict_do_nothing(index_elements=["node_id", "model"])
         )
 
     # Auto-publish the first run ever loaded (the legacy import) so the default view is unchanged;

@@ -94,6 +94,7 @@ node_modules
 venv/
 .venv/
 .pg/
+.raw_cache/
 __pycache__/
 *.pyc
 *.pyo
