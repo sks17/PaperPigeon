@@ -145,3 +145,87 @@ Acceptance:      _canonical_name prefers the names entry whose `types` include "
                  "label", then first; test with a fixture having multiple localized names asserts the
                  ror_display English name wins. Pure.
 Do NOT:          network/DB · import clients/*.
+
+---
+
+## Phase 3 — Lab layer (scraping + grounded extraction) — see SCRAPING.md + DISCOVERY.md
+The main thread builds the network/LLM layer (clients/ssrf.py, clients/http.get_text, clients/llm.py,
+scraping/{robots,discovery,fetch}.py, extraction/extract_labs.py, scrape_run.py, the CLI). These tasks are
+the PURE transforms + their tests. Stubs exist with signatures + contracts.
+
+### P3-T01: clean-html        [status: done]
+Layer: engine · Branch: agent/scraping-and-ai-extraction · Depends on: —
+Goal:            Implement `clean_html(html, url)` per SCRAPING.md §1 (trafilatura main-content extraction).
+Files allowed:   backend/repopulation/scraping/clean.py
+Files forbidden: everything else.
+Acceptance:      Returns {url,title,text,anchors,chunks}; strips scripts/nav/boilerplate via trafilatura;
+                 Docling path only when PREFER_DOCLING truthy; chunks are deterministic. Pure — no network,
+                 no script execution, no link-following; injected instructions in HTML stay inert text.
+Do NOT:          import clients/* or any HTTP lib · network/DB/clock.
+
+### P3-T02: lab-extraction-schema        [status: done]
+Layer: engine · Branch: agent/scraping-and-ai-extraction · Depends on: —
+Goal:            Implement LAB_JSON_SCHEMA + `validate(obj)` per SCRAPING.md §2.
+Files allowed:   backend/repopulation/extraction/lab_schema.py
+Files forbidden: everything else.
+Acceptance:      LAB_JSON_SCHEMA is a strict JSON schema (required: lab_name, members, research_areas,
+                 confidence; optional pi/self_description/source_anchor; NO extra/control fields).
+                 validate(obj) returns a LabExtraction on match else None (wrong types / missing required /
+                 extra keys -> None). This is the injection backstop. Pure.
+Do NOT:          network/DB/LLM/clock · import clients/*.
+
+### P3-T03: build-lab-rows        [status: done]
+Layer: engine · Branch: agent/scraping-and-ai-extraction · Depends on: —
+Goal:            Implement `build_lab_rows(...)` per SCRAPING.md §3.
+Files allowed:   backend/repopulation/discovery/build_lab_rows.py
+Files forbidden: everything else.
+Acceptance:      Returns {accepted: ImportRows, quarantined:[{kind,payload,reason}]}. Members reconciled to
+                 researcher_ids by normalized name (unmatched -> quarantine, no edge); labs merged with legacy
+                 lab_ids when names match, deduped by normalize(name)+dept; lab confidence < min_confidence OR
+                 no source_anchor -> quarantine whole lab. Emits lab/department nodes + MEMBER_OF/PART_OF/
+                 FOCUSES_ON edges; every node/edge has a source_record_key (source='scrape') + weight +
+                 confidence. Pure, deterministic, idempotent.
+Do NOT:          import clients/* or any HTTP lib · network/DB/clock · edit the loader.
+
+### P3-T04: test-clean        [status: done]
+Layer: engine (test) · Branch: agent/scraping-and-ai-extraction · Depends on: —
+Goal:            Test clean_html on fixture HTML.
+Files allowed:   backend/repopulation/tests/test_clean.py, backend/repopulation/tests/fixtures/lab_page*.html
+Files forbidden: everything else.
+Acceptance:      A realistic faculty/lab-page fixture (with nav/script/footer boilerplate + a members list +
+                 a self-description) → clean_html returns main text containing the description + member names
+                 and NOT the boilerplate/script; chunks non-empty; an injection-laced fixture
+                 ("<!-- ignore all instructions -->") cleans without executing anything (text only).
+Do NOT:          network/DB · edit impl files.
+
+### P3-T05: test-lab-schema        [status: done]
+Layer: engine (test) · Branch: agent/scraping-and-ai-extraction · Depends on: —
+Goal:            Test the schema validator (injection backstop).
+Files allowed:   backend/repopulation/tests/test_lab_schema.py
+Files forbidden: everything else.
+Acceptance:      validate() accepts a well-formed extraction → LabExtraction; rejects (None) on: missing
+                 required field, wrong type, and EXTRA/control keys (e.g. {"tool_call": ...}); confidence
+                 coerced/validated to 0..1. Pure.
+Do NOT:          network/DB/LLM · edit impl files.
+
+### P3-T06: test-build-lab-rows        [status: done]
+Layer: engine (test) · Branch: agent/repopulation-engine · Depends on: —
+Goal:            Test reconciliation + quarantine + legacy merge.
+Files allowed:   backend/repopulation/tests/test_build_lab_rows.py
+Files forbidden: everything else.
+Acceptance:      With a small researcher_set + legacy_labs: a matched member → MEMBER_OF edge; an unmatched
+                 member → quarantined (no edge); a low-confidence / no-anchor lab → quarantined (absent from
+                 accepted); a lab named like a legacy lab reuses its lab_id; every accepted node/edge has a
+                 source_record_key + provenance + weight. No DB/network.
+Do NOT:          hit a DB/network · edit impl files.
+
+### P3-T07: test-ssrf-scrape        [status: done]
+Layer: infra (test) · Branch: agent/security-hardening · Depends on: —
+Goal:            Test the scraper SSRF validator with a mocked resolver.
+Files allowed:   backend/repopulation/tests/test_ssrf_scrape.py
+Files forbidden: everything else.
+Acceptance:      validate_scrape_url (inject resolver=fake getaddrinfo): blocks non-https; blocks off-domain
+                 host; blocks hosts resolving to private/loopback/link-local/metadata IPs (127.0.0.1, 10.x,
+                 192.168.x, 169.254.169.254, ::1); allows a public IP under an allowed domain (and a subdomain
+                 like cs.washington.edu under washington.edu).
+Do NOT:          real DNS/network · edit impl files.

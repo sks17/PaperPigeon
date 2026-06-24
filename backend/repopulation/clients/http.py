@@ -9,12 +9,15 @@
 """
 from __future__ import annotations
 
+import hashlib
+import socket
 import time
 from urllib.parse import urlparse
 
 import httpx
 
 from backend.repopulation.clients.rawstore import RawStore, cache_key
+from backend.repopulation.clients.ssrf import is_blocked_ip
 
 _RETRYABLE = {429, 500, 502, 503, 504}
 # Auth params/headers must never be keyed-on or written to the raw store (secret leakage to disk/S3).
@@ -132,6 +135,81 @@ class HttpClient:
             body = resp.json()
             self._raw.put(key, {"url": url, "status": resp.status_code, "body": body})
             return body, key
+
+        last_resp.raise_for_status()
+        raise RuntimeError("unreachable")
+
+    def get_text(self, url: str, *, headers: dict | None = None, use_cache: bool = True) -> tuple:
+        """GET an HTML/text page for scraping. Returns (record, raw_key) where record =
+        {url, status, body, etag, last_modified, content_hash, not_modified, from_cache}.
+
+        Caching: with use_cache=True a previously-stored page is returned WITHOUT a request (the
+        re-scrape cadence is the caller's choice). With use_cache=False the page is re-fetched
+        CONDITIONALLY (If-None-Match / If-Modified-Since from the stored ETag/Last-Modified); a 304
+        reuses the stored body. The content_hash lets the caller skip reprocessing unchanged pages.
+
+        SSRF: the scraper (fetch.py) MUST call ssrf.validate_scrape_url(url, allowed_domains) BEFORE
+        this — the fixed-host allowlist does not apply to scrape targets. HTTPS is enforced here as
+        defense-in-depth."""
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            raise SSRFError(f"non-HTTPS URL blocked: {url}")
+        host = parsed.hostname
+        key = cache_key(url, None)
+        prior = self._raw.get_record(key)
+        if use_cache and prior is not None:
+            self.cache_hits += 1
+            return {**prior, "from_cache": True}, key
+
+        # Re-resolve + reject non-public IPs immediately before the request. fetch.py already ran the
+        # full validate_scrape_url; this narrows the DNS-rebinding window (a flip to a private/metadata
+        # IP between that check and the connect). A determined sub-millisecond rebind vs httpx's own
+        # resolve remains — the network-level fix is egress filtering on the deployed scraper (Fargate
+        # SG / NAT), tracked for the deployment phase.
+        try:
+            for info in socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP):
+                if is_blocked_ip(info[4][0]):
+                    raise SSRFError(f"host {host!r} resolved to non-public IP {info[4][0]}")
+        except socket.gaierror as exc:
+            raise SSRFError(f"DNS resolution failed for {host!r}: {exc}") from exc
+
+        req_headers = dict(headers or {})
+        if prior:
+            if prior.get("etag"):
+                req_headers.setdefault("If-None-Match", prior["etag"])
+            if prior.get("last_modified"):
+                req_headers.setdefault("If-Modified-Since", prior["last_modified"])
+
+        backoff = 1.0
+        last_resp = None
+        for attempt in range(self._max_retries + 1):
+            self._throttle(host)
+            resp = self._client.get(url, headers=req_headers)
+            self.live_calls += 1
+            last_resp = resp
+            if resp.status_code in _RETRYABLE and attempt < self._max_retries:
+                retry_after = resp.headers.get("Retry-After", "")
+                self._sleep(float(retry_after) if retry_after.isdigit() else backoff)
+                backoff = min(backoff * 2, 30.0)
+                continue
+            if resp.status_code == 304 and prior is not None:
+                self.cache_hits += 1
+                record = {**prior, "not_modified": True, "from_cache": True}
+                return record, key
+            resp.raise_for_status()
+            body = resp.text
+            record = {
+                "url": url,
+                "status": resp.status_code,
+                "body": body,
+                "etag": resp.headers.get("ETag"),
+                "last_modified": resp.headers.get("Last-Modified"),
+                "content_hash": hashlib.sha256(body.encode("utf-8", "ignore")).hexdigest(),
+                "not_modified": False,
+                "from_cache": False,
+            }
+            self._raw.put(key, record)
+            return record, key
 
         last_resp.raise_for_status()
         raise RuntimeError("unreachable")

@@ -6,3 +6,4 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 httpx>=0.27
 python-dotenv>=1.0
+trafilatura>=1.8        # HTML -> main text for lab extraction (Phase 3)

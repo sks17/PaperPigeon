@@ -21,11 +21,13 @@ def cache_key(url: str, params: dict | None) -> str:
 
 class RawStore(Protocol):
     def get(self, key: str) -> Any | None: ...
+    def get_record(self, key: str) -> dict | None: ...
     def put(self, key: str, record: dict) -> str: ...
 
 
 class LocalRawStore:
-    """Filesystem RawStore. Stored record = {url, params, fetched_at, status, body}."""
+    """Filesystem RawStore. Stored record = {url, status, body, ...} (HTML records also carry
+    etag / last_modified / content_hash for conditional re-fetching)."""
 
     def __init__(self, root: str | Path = ".raw_cache") -> None:
         self.root = Path(root)
@@ -35,11 +37,14 @@ class LocalRawStore:
         return self.root / f"{key}.json"
 
     def get(self, key: str) -> Any | None:
+        record = self.get_record(key)
+        return record.get("body") if record is not None else None
+
+    def get_record(self, key: str) -> dict | None:
         path = self._path(key)
         if not path.exists():
             return None
-        record = json.loads(path.read_text(encoding="utf-8"))
-        return record.get("body")
+        return json.loads(path.read_text(encoding="utf-8"))
 
     def put(self, key: str, record: dict) -> str:
         self._path(key).write_text(

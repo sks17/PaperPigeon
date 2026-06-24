@@ -17,6 +17,8 @@ from pathlib import Path
 
 OPENALEX_LIST_COST = 0.10 / 1000.0
 EMBED_USD_PER_1M_TOKENS = 0.02
+# Cheap extraction model (Gemini Flash via OpenRouter) — conservative blended in/out estimate.
+CHAT_USD_PER_1M_TOKENS = 0.40
 
 
 class BudgetExceeded(RuntimeError):
@@ -61,3 +63,8 @@ class DailyBudget:
 def estimate_embed_cost(texts: list[str]) -> float:
     tokens = sum(len(t) for t in texts) / 4.0  # ~4 chars/token
     return tokens / 1_000_000.0 * EMBED_USD_PER_1M_TOKENS
+
+
+def estimate_chat_cost(prompt_chars: int, *, max_output_chars: int = 2000) -> float:
+    tokens = (prompt_chars + max_output_chars) / 4.0
+    return tokens / 1_000_000.0 * CHAT_USD_PER_1M_TOKENS
