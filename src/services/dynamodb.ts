@@ -164,6 +164,52 @@ export async function fetchRuns(): Promise<RunSummary[]> {
   }
 }
 
+/** Result of submitting a discovery request (POST /api/discover). */
+export interface DiscoverResponse {
+  job_id: number;
+  run_id: number | null;
+  status: string; // queued | running | succeeded | failed
+  cached: boolean;
+}
+
+/** A discovery job's live status (GET /api/discover/{id}). */
+export interface DiscoveryJob {
+  id: number;
+  status: string;
+  stage: string; // queued | discovering | describing | scraping | done
+  run_id: number | null;
+  scrape: boolean;
+  error: string | null;
+  requested_at: string | null;
+  finished_at: string | null;
+}
+
+/** Enqueue on-demand discovery of an institution/topic. Key-gated (X-Discovery-Key). */
+export async function submitDiscovery(
+  req: { institution: string; topic?: string; scrape?: boolean },
+  apiKey: string,
+): Promise<DiscoverResponse> {
+  const res = await fetch(apiUrl('/api/discover'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Discovery-Key': apiKey },
+    body: JSON.stringify(req),
+  });
+  if (res.status === 401) throw new Error('Invalid or missing API key.');
+  if (res.status === 422) throw new Error('Please enter an institution name.');
+  if (!res.ok) throw new Error(`Discovery failed: ${res.status} ${res.statusText}`);
+  return await res.json();
+}
+
+/** Poll a discovery job. Key-gated. */
+export async function getDiscoveryStatus(jobId: number, apiKey: string): Promise<DiscoveryJob> {
+  const res = await fetch(apiUrl(`/api/discover/${jobId}`), {
+    headers: { 'X-Discovery-Key': apiKey },
+  });
+  if (res.status === 401) throw new Error('Invalid or missing API key.');
+  if (!res.ok) throw new Error(`Status check failed: ${res.status} ${res.statusText}`);
+  return await res.json();
+}
+
 /**
  * Resolves a paper's document_id to its associated lab_id.
  * Used for constructing S3 paths for PDF access.

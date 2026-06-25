@@ -8,12 +8,13 @@ import ResearcherProfilePanel from './ResearcherProfilePanel';
 import ResearcherModal from './ResearcherModal';
 import SearchBar from './SearchBar';
 import RunSelector from './RunSelector';
+import DiscoveryModal from './DiscoveryModal';
 import RecommendationsModal from './RecommendationsModal';
 import PaperChatModal from './PaperChatModal';
 import LabModal from './LabModal';
 import AccessibilityPanel from './AccessibilityPanel';
 import { useAccessibility } from '@/contexts/AccessibilityContext';
-import { Settings, Glasses } from 'lucide-react';
+import { Settings, Glasses, Compass } from 'lucide-react';
 
 interface ResearchNetworkGraphProps {
   className?: string;
@@ -22,6 +23,7 @@ interface ResearchNetworkGraphProps {
   runs?: RunSummary[];
   runId?: number | null;
   onRunChange?: (runId: number | null) => void;
+  onDiscovered?: (runId: number) => void;
 }
 
 const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
@@ -31,7 +33,9 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
   runs = [],
   runId = null,
   onRunChange,
+  onDiscovered,
 }) => {
+  const [showDiscovery, setShowDiscovery] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<any>(null);
   const [localGraphData, setLocalGraphData] = useState<GraphData | null>(null);
@@ -533,9 +537,30 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
         </div>
       )}
       
-      {/* Run-snapshot picker (self-hides when there are no repopulation runs). */}
-      {onRunChange && (
-        <RunSelector runs={runs} value={runId} onChange={onRunChange} />
+      {/* Discover a new ecosystem + run-snapshot picker (picker self-hides with no runs). */}
+      <div className="fixed top-[4.75rem] left-6 z-30 flex items-start gap-2">
+        {onDiscovered && (
+          <button
+            onClick={() => setShowDiscovery(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/95 backdrop-blur border shadow hover:shadow-lg transition-all duration-200 text-sm font-medium"
+            title="Discover any university or research ecosystem"
+          >
+            <Compass className="w-4 h-4 text-muted-foreground" />
+            Discover
+          </button>
+        )}
+        {onRunChange && <RunSelector runs={runs} value={runId} onChange={onRunChange} />}
+      </div>
+
+      {onDiscovered && (
+        <DiscoveryModal
+          isOpen={showDiscovery}
+          onClose={() => setShowDiscovery(false)}
+          onDiscovered={(id) => {
+            onDiscovered(id);
+            setShowDiscovery(false);
+          }}
+        />
       )}
 
       <SearchBar

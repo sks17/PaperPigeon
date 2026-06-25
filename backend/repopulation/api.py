@@ -11,13 +11,36 @@ The engine is created lazily on first request so importing this module never nee
 """
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException
+import hmac
+import os
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.repopulation.db import make_engine, make_session_factory
+from backend.repopulation.discovery_service import enqueue_discovery, job_status
 from backend.repopulation.loader import graph_from_db
 from backend.repopulation.reads import lab_detail, list_runs, node_description
+
+
+class DiscoverRequest(BaseModel):
+    """Body for POST /api/discover. Bounds reject oversized inputs before any DB/network work."""
+
+    institution: str = Field(min_length=1, max_length=200)
+    topic: str | None = Field(default=None, max_length=200)
+    scrape: bool = False
+
+
+def require_discovery_key(
+    x_discovery_key: str | None = Header(default=None, alias="X-Discovery-Key"),
+) -> None:
+    """Gate the discovery endpoints behind DISCOVERY_API_KEY. Fail-closed: 401 when the secret is
+    unset or the header doesn't match (constant-time compare)."""
+    expected = os.getenv("DISCOVERY_API_KEY")
+    if not expected or not x_discovery_key or not hmac.compare_digest(x_discovery_key, expected):
+        raise HTTPException(status_code=401, detail="invalid or missing API key")
 
 _session_factory = None
 
@@ -81,6 +104,32 @@ def create_app() -> FastAPI:
     def runs(session: Session = Depends(get_session)) -> list[dict]:
         """List repopulation runs (id, seed, status, published, counts) for the run-snapshot picker."""
         return list_runs(session)
+
+    # ── on-demand discovery (key-gated) ───────────────────────────────────────
+    # POST enqueues a job (or returns a cached run / the live job); the worker process runs the
+    # pipeline. No network work happens in the request itself.
+    @app.post("/api/discover")
+    def discover(
+        req: DiscoverRequest,
+        session: Session = Depends(get_session),
+        _key: None = Depends(require_discovery_key),
+    ) -> dict:
+        """Enqueue discovery of an institution/topic. Returns {job_id, run_id, status, cached}."""
+        return enqueue_discovery(
+            session, institution=req.institution, topic=req.topic, scrape=req.scrape
+        )
+
+    @app.get("/api/discover/{job_id}")
+    def discover_status(
+        job_id: int,
+        session: Session = Depends(get_session),
+        _key: None = Depends(require_discovery_key),
+    ) -> dict:
+        """Poll a discovery job's status/stage/run_id/error."""
+        status = job_status(session, job_id)
+        if status is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        return status
 
     return app
 

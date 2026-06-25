@@ -12,6 +12,8 @@ serving the existing graph + AWS-backed features until you flip routing, and can
 | `GET /api/graph/data` (+ `?run=`) | **fly FastAPI** | from Postgres; reproduces the legacy graph |
 | `GET /api/node/description` | **fly FastAPI** | Phase-4 grounded description + evidence |
 | `GET /api/lab` | **fly FastAPI** | Phase-4 enriched lab record |
+| `POST /api/discover` (+ `GET /api/discover/{id}`) | **fly FastAPI** | key-gated on-demand ingestion of any ecosystem; enqueues a `discovery_job` |
+| discovery worker | **fly worker process** (`[processes].worker`, always-on) | drains the job queue → runs the ingestion pipeline. Set `DISCOVERY_API_KEY` + see DEPLOY.md §5b |
 | `POST /api/graph/paper-lab-id` | **Vercel/Flask** | DynamoDB lookup — not ported |
 | `POST /api/rag/chat` | **Vercel/Flask** | Bedrock RAG — not ported |
 | `POST /api/recommendations/from-resume` | **Vercel/Flask** | Bedrock — not ported |

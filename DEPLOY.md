@@ -232,6 +232,39 @@ appear on the **default** graph, either publish the run or run `scripts/describe
 
 ---
 
+## 5b. Enable on-demand discovery (search ANY ecosystem from the app)
+
+The deploy already ships two process groups (`fly.toml [processes]`): the **web** API and an
+always-on **worker** that runs discovery jobs. To turn the feature on:
+
+1. **Set the gate key** (any strong random string — this is what users type in the app's Discover box):
+   ```bash
+   fly secrets set --app paper-pigeon-api DISCOVERY_API_KEY="$(openssl rand -hex 24)"
+   # also ensure the worker can call the paid APIs:
+   fly secrets set --app paper-pigeon-api OPENALEX_API_KEY=… OPENROUTER_API_KEY=… PAPERPIGEON_BUDGET_PRO_DAILY_USD=10
+   ```
+2. **Deploy** (if not already): `fly deploy --app paper-pigeon-api`.
+3. **Ensure one machine of each process** (the worker must stay up to drain the queue):
+   ```bash
+   fly scale count web=1 worker=1 --app paper-pigeon-api
+   fly status --app paper-pigeon-api          # confirm a 'worker' machine is running
+   fly logs --app paper-pigeon-api            # 'discovery worker … started'
+   ```
+4. **Use it** — in the web app click **Discover** (top-left), enter an institution (+ optional topic),
+   paste the `DISCOVERY_API_KEY`, and submit; the new run auto-selects when the worker finishes. Or via curl:
+   ```bash
+   curl -X POST https://paper-pigeon-api.fly.dev/api/discover \
+     -H "X-Discovery-Key: <key>" -H "Content-Type: application/json" \
+     -d '{"institution":"Massachusetts Institute of Technology","topic":"robotics","scrape":false}'
+   # → {"job_id":…, "run_id":null, "status":"queued", "cached":false}
+   curl https://paper-pigeon-api.fly.dev/api/discover/<job_id> -H "X-Discovery-Key: <key>"
+   ```
+
+Cost & safety: every discovery spends OpenAlex + OpenRouter credits, bounded by the per-job page caps
+(`DISCOVERY_MAX_AUTHOR_PAGES`, etc.) and the atomic daily `PAPERPIGEON_BUDGET_PRO_DAILY_USD` ledger.
+**Near-term follow-up:** the single shared key has no per-caller quota — add per-key quotas / rate
+limiting before exposing it widely. Treat the key as a shared secret (rotate with `fly secrets set`).
+
 ## 6. Updating after the first deploy
 
 - **Backend code change:** `git push`, then `fly deploy --app paper-pigeon-api`.

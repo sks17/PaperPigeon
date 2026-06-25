@@ -9,10 +9,17 @@
 #
 # `app` is a placeholder — set it to your created app name before `fly deploy`.
 app = "paper-pigeon-api"
-primary_region = "sea"   # Seattle — close to the UW data / the Vercel frontend's users
+primary_region = "sjc"   # Seattle — close to the UW data / the Vercel frontend's users
 
 [build]
   dockerfile = "Dockerfile"
+
+# Two process groups share one image: the web API (scale-to-zero) and an always-on worker that
+# drains the discovery_job queue. With [processes] set, fly runs these commands (not the Dockerfile
+# CMD). After the first deploy, ensure one of each:  fly scale count web=1 worker=1
+[processes]
+  web = "uvicorn backend.repopulation.api:app --host 0.0.0.0 --port 8080"
+  worker = "python -m backend.repopulation.worker"
 
 [deploy]
   # Apply migrations + seed the legacy graph before the new version takes traffic (idempotent).
@@ -22,6 +29,7 @@ primary_region = "sea"   # Seattle — close to the UW data / the Vercel fronten
   PORT = "8080"
 
 [http_service]
+  processes = ["web"]   # only the web group serves HTTP; the worker has no public port
   internal_port = 8080
   force_https = true
   auto_stop_machines = "stop"     # scale to zero when idle (read-mostly graph API)

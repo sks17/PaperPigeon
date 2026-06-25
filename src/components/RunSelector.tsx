@@ -71,7 +71,7 @@ const RunSelector: React.FC<RunSelectorProps> = ({ runs, value, onChange }) => {
   );
 
   return (
-    <div ref={ref} className="fixed top-[4.75rem] left-6 z-30">
+    <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}

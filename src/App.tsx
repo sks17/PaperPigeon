@@ -23,6 +23,12 @@ function App() {
     fetchRuns().then(setRuns).catch(() => setRuns([]))
   }, [])
 
+  // After a discovery job finishes: refresh the run list and switch to the new run.
+  const handleDiscovered = (newRunId: number) => {
+    fetchRuns().then(setRuns).catch(() => setRuns([]))
+    setRunId(newRunId)
+  }
+
   // (Re)load the graph whenever the selected run changes.
   useEffect(() => {
     let active = true
@@ -51,6 +57,7 @@ function App() {
                 runs={runs}
                 runId={runId}
                 onRunChange={setRunId}
+                onDiscovered={handleDiscovered}
               />
             </div>
           } />

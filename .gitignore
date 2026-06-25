@@ -114,3 +114,5 @@ blob-report/
 
 # Verification-only demo Postgres data dir (scripts/demo_stack scratch)
 .pg_demo/
+
+.pg_*/
