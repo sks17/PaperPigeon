@@ -35,6 +35,7 @@ from backend.repopulation.db import make_engine, make_session_factory, migration
 from backend.repopulation.describe_run import describe_run  # noqa: E402
 from backend.repopulation.importer.cache_to_rows import cache_to_rows  # noqa: E402
 from backend.repopulation.loader import graph_from_db, load_import_rows, publish_run  # noqa: E402
+from backend.repopulation.promote import promote_descriptions  # noqa: E402
 from backend.repopulation.run import run_repopulation  # noqa: E402
 
 CACHE = ROOT / "public" / "graph_cache.json"
@@ -53,6 +54,11 @@ def main() -> int:
     ap.add_argument("--neighbours", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None, help="cap nodes described (cost guard)")
     ap.add_argument("--no-embeddings", action="store_true", help="ground on stored facts only")
+    ap.add_argument("--promote", action="store_true",
+                    help="enrich the published graph's researchers with this run's grounded "
+                         "descriptions (fills empty bios; preserves existing unless --overwrite)")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="with --promote, replace existing published descriptions too")
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
 
@@ -109,6 +115,13 @@ def main() -> int:
         for k, v in summary.items():
             print(f"  {k}: {v}")
         print(f"  budget spent today: ${budget.spent:.4f} / ${budget.cap}")
+
+        if args.promote:
+            with Session() as s:
+                promo = promote_descriptions(s, run_id, overwrite=args.overwrite)
+            print("\n=== promote summary (published graph enriched) ===")
+            for k, v in promo.items():
+                print(f"  {k}: {v}")
 
         if args.publish:
             with Session() as s:

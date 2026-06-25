@@ -297,3 +297,23 @@ Acceptance:      gather_evidence dispatches on kind: a lab grounds on its scrape
                  Tested: new lab described (scrape -> grounded), legacy lab untouched, lab evidence
                  (self-description + member) reaches the prompt. scripts/scrape_labs.py --describe
                  wires the end-to-end command (scrape -> describe researchers + labs).
+
+### P4-T07: description-read-endpoints        [status: done]
+Layer: backend-api · Branch: agent/backend-api · Depends on: P4-T01..05
+Goal:            Surface grounded descriptions the graph endpoint can't carry.
+Files:           backend/repopulation/reads.py, backend/repopulation/api.py,
+                 backend/repopulation/tests/test_api_reads.py
+Acceptance:      GET /api/node/description?id= returns {about, model, generated_at, evidence}; GET
+                 /api/lab?id= returns {description, research_areas, pi, url, faculty:[{id,name}]} and
+                 404s on a non-lab id. id is a query param (node ids contain '/' and ':'). Additive —
+                 GET /api/graph/data unchanged. Tested via FastAPI TestClient + pgserver.
+
+### P4-T08: promote-descriptions        [status: done]
+Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: P4-T01..05
+Goal:            Deliberately enrich the published graph with a run's grounded descriptions.
+Files:           backend/repopulation/promote.py, backend/repopulation/tests/test_promote.py,
+                 scripts/describe.py (--promote/--overwrite)
+Acceptance:      promote_descriptions reconciles by normalized name (legacy ids are name-based),
+                 FILLS empty published descriptions, PRESERVES existing `about` unless overwrite=True,
+                 tags promoted:<model> (idempotent), carries evidence/generated_at. Tested:
+                 fill-empty + preserve + overwrite + idempotency.

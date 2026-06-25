@@ -11,12 +11,13 @@ The engine is created lazily on first request so importing this module never nee
 """
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from backend.repopulation.db import make_engine, make_session_factory
 from backend.repopulation.loader import graph_from_db
+from backend.repopulation.reads import lab_detail, node_description
 
 _session_factory = None
 
@@ -56,6 +57,25 @@ def create_app() -> FastAPI:
         `?run=<id>` serves that repopulation run's snapshot; omitted serves the published run
         (the legacy graph by default), so existing behavior is unchanged."""
         return graph_from_db(session, run_id=run)
+
+    # Node ids contain '/' and ':' (e.g. https://openalex.org/A1, lab:https://...), so detail reads
+    # take the id as a query param rather than a path segment. Additive surface (Phase 4): the graph
+    # node stays minimal; the enriched, grounded data is read here.
+    @app.get("/api/node/description")
+    def node_desc(id: str, session: Session = Depends(get_session)) -> dict:
+        """A node's grounded `about` text + the evidence that grounds it."""
+        detail = node_description(session, id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="node not found")
+        return detail
+
+    @app.get("/api/lab")
+    def lab(id: str, session: Session = Depends(get_session)) -> dict:
+        """A lab's enriched record (description, research areas, PI, url, resolved faculty)."""
+        detail = lab_detail(session, id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="lab not found")
+        return detail
 
     return app
 

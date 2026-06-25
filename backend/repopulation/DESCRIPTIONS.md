@@ -85,16 +85,33 @@ so no per-kind prompt is needed. Because `build_lab_rows` reuses legacy lab ids,
 appear in a run's membership; `describe_run` excludes any node belonging to the **published run**, so
 those are never re-described (snapshot isolation).
 
+## Read surface (`api.py` + `reads.py`)
+`serialize_graph` renders a lab as 4 fields and a researcher's `about` only inside a run snapshot, so
+the enriched/grounded data has its own read path (node ids contain `/` and `:`, so id is a query
+param, not a path segment):
+- `GET /api/node/description?id=<node_id>` → `{about, description_model, description_generated_at,
+  evidence, confidence, …}` — any node's grounded description + its cited evidence.
+- `GET /api/lab?id=<lab_id>` → `{description, research_areas, pi, url, faculty:[{id,name}], …}` — a
+  lab's enriched record (404 on a non-lab id).
+
+## Promote (`promote.py`, deliberate/opt-in)
+`promote_descriptions(session, from_run_id, *, to_run_id=None, overwrite=False)` copies a run's
+grounded researcher descriptions onto the **published** graph, reconciled by normalized name (legacy
+ids are name-based). The one place that intentionally writes published nodes, so it is conservative:
+FILLS only empty descriptions and never overwrites existing `about` text unless `overwrite=True`;
+promoted descriptions are tagged `promoted:<model>` (idempotent). Driven by `scripts/describe.py
+--promote [--overwrite]`.
+
 ## Drivers
 - `scripts/describe.py --institution "…" [--topic …] [--min-confidence 0.5] [--limit N]
-  [--no-embeddings] [--publish]` — boots local PG, loads+publishes the legacy graph, runs a Phase-2
-  repopulation (embedded so pgvector evidence exists), then `describe_run` over researchers; reports
-  how many gained a grounded `about`.
+  [--no-embeddings] [--promote [--overwrite]] [--publish]` — boots local PG, loads+publishes the
+  legacy graph, runs a Phase-2 repopulation (embedded so pgvector evidence exists), then `describe_run`
+  over researchers; `--promote` enriches the published graph.
 - `scripts/scrape_labs.py --institution "…" --describe [--min-confidence 0.5] [--publish]` — the
   Phase-3 scrape batch with a Phase-4 tail: after scraping labs into the run, describes researchers
   **and** labs (`kinds=("researcher","lab")`).
 
 ## Deferred (future passes)
-- **Frontend surfacing** of `?run=<id>` snapshots (the existing UI still renders the published graph;
-  lab `about` is exposed via a separate read, not the 4-field graph node).
-- **Promote**: deliberately copying a repop run's grounded description onto a published legacy node.
+- **Frontend surfacing** of `?run=<id>` snapshots + the new read endpoints. Deferred behind the infra
+  cutover: the shipped React UI still talks to the legacy Flask backend, while these endpoints live on
+  the new FastAPI service — wiring them up belongs with the backend cutover (AGENTS.md build step 6).
