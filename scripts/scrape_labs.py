@@ -13,7 +13,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -34,6 +34,7 @@ from backend.repopulation.clients.openalex import OpenAlexClient  # noqa: E402
 from backend.repopulation.clients.rawstore import LocalRawStore  # noqa: E402
 from backend.repopulation.clients.ror import RorClient  # noqa: E402
 from backend.repopulation.db import make_engine, make_session_factory, migration_files  # noqa: E402
+from backend.repopulation.describe_run import describe_run  # noqa: E402
 from backend.repopulation.importer.cache_to_rows import cache_to_rows  # noqa: E402
 from backend.repopulation.loader import graph_from_db, load_import_rows, publish_run  # noqa: E402
 from backend.repopulation.models.membership import RunNode  # noqa: E402
@@ -64,6 +65,10 @@ def main() -> int:
     ap.add_argument("--max-work-pages", type=int, default=3)
     ap.add_argument("--year", type=int, default=datetime.now().year)
     ap.add_argument("--no-embeddings", action="store_true")
+    ap.add_argument("--describe", action="store_true",
+                    help="after scraping, generate grounded RAG descriptions for the run's "
+                         "researchers + labs (Phase 4)")
+    ap.add_argument("--min-confidence", type=float, default=0.5)
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
 
@@ -148,6 +153,21 @@ def main() -> int:
         for k, v in scrape.items():
             print(f"  {k}: {v}")
         print(f"  budget spent today: ${budget.spent:.4f} / ${budget.cap}")
+
+        if args.describe:
+            print("\n[3/3] generating grounded descriptions (researchers + labs) ...")
+            generated_at = datetime.now(timezone.utc).isoformat()
+            embedding_model = embeddings.model if embeddings is not None else None
+            with Session() as s:
+                desc = describe_run(
+                    s, run_id, llm=llm, generated_at=generated_at, model=llm.model,
+                    min_confidence=args.min_confidence, kinds=("researcher", "lab"),
+                    embedding_model=embedding_model,
+                )
+            print("\n=== describe summary ===")
+            for k, v in desc.items():
+                print(f"  {k}: {v}")
+            print(f"  budget spent today: ${budget.spent:.4f} / ${budget.cap}")
 
         if args.publish:
             with Session() as s:

@@ -229,3 +229,71 @@ Acceptance:      validate_scrape_url (inject resolver=fake getaddrinfo): blocks 
                  192.168.x, 169.254.169.254, ::1); allows a public IP under an allowed domain (and a subdomain
                  like cs.washington.edu under washington.edu).
 Do NOT:          real DNS/network · edit impl files.
+
+---
+
+## Phase 4 — AI descriptions (grounded RAG per-node) — see DESCRIPTIONS.md
+The main thread built the RAG/LLM layer (descriptions/retrieve.py over Postgres+pgvector,
+describe_run.py orchestration, loader.apply_description_updates, scripts/describe.py) and validated it
+end-to-end against an in-process Postgres with a stub LLM. These are the PURE transforms + their tests.
+The pure functions take already-gathered evidence (a list of `{id,kind,text}` dicts) and a validated
+`NodeDescription`; they never touch DB/network/LLM/clock. **All P4 tasks below were implemented +
+tested in one main-thread batch (mirroring the Phase 3 commit); they are recorded here as the
+file-disjoint slices a Cursor swarm would have taken.**
+
+### P4-T01: description-schema        [status: done]
+Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: —
+Goal:            DESCRIPTION_JSON_SCHEMA + NodeDescription + validate() per DESCRIPTIONS.md (backstop).
+Files allowed:   backend/repopulation/extraction/description_schema.py
+Acceptance:      Strict schema (required summary/evidence/confidence, additionalProperties:false);
+                 validate() → NodeDescription on match else None (extra/control keys, wrong types,
+                 empty/over-long summary, non-positive/non-int evidence ids, out-of-range confidence,
+                 bool-as-int/float all rejected); evidence deduped+sorted. Pure.
+
+### P4-T02: description-prompt        [status: done]
+Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: —
+Goal:            build_description_prompt(node, evidence) → (system, user), deterministic.
+Files allowed:   backend/repopulation/descriptions/prompt.py
+Acceptance:      System frames evidence as DATA + forbids following directives inside it + demands the
+                 JSON shape; user numbers every evidence item by id + names the node; injected text in
+                 an evidence item stays inert (quoted data, never promoted to an instruction). Pure.
+
+### P4-T03: build-description-rows        [status: done]
+Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: P4-T01
+Goal:            evaluate_description/build_description_update — grounding + legacy-preserve gate.
+Files allowed:   backend/repopulation/descriptions/build_rows.py
+Acceptance:      Accepts a grounded, confident, non-legacy description → update dict (only cited
+                 evidence persisted); rejects with reason legacy-preserve / low-confidence / ungrounded
+                 (no citations OR a cited id not in the shown evidence = hallucination). Pure, no clock.
+
+### P4-T04: test-description-schema / -prompt / -build-rows        [status: done]
+Layer: engine (test) · Branch: agent/ai-descriptions-rag · Depends on: P4-T01..03
+Files allowed:   backend/repopulation/tests/test_description_schema.py,
+                 backend/repopulation/tests/test_description_prompt.py,
+                 backend/repopulation/tests/test_build_description_rows.py
+Acceptance:      Cover accept + every reject path above; injection-laced evidence inert; legacy never
+                 overwritten; hallucinated/empty citations rejected. Pure (no DB/network).
+
+### P4-T05: test-describe-run        [status: done]
+Layer: engine (test) · Branch: agent/ai-descriptions-rag · Depends on: —
+Files allowed:   backend/repopulation/tests/test_describe_run.py
+Acceptance:      pgserver + legacy loaded + a tiny embedded repop run; stub LLM. Assert: run
+                 researchers gain grounded `about`; published legacy snapshot byte-unchanged; pgvector
+                 "related" evidence reaches the prompt; idempotent rerun is a no-op; works without
+                 embeddings; ungrounded/low-confidence → quarantined not written; the loader UPDATE
+                 never overwrites a legacy_dynamodb description.
+
+### P4-T06: lab-descriptions        [status: done]
+Layer: engine · Branch: agent/ai-descriptions-rag · Depends on: P4-T01..03
+Goal:            Extend grounded descriptions to lab nodes (describe_run accepts kinds incl. "lab").
+Files allowed:   backend/repopulation/descriptions/retrieve.py (lab evidence branch),
+                 backend/repopulation/describe_run.py (published-run isolation guard),
+                 backend/repopulation/tests/test_describe_run.py, scripts/scrape_labs.py (--describe)
+Acceptance:      gather_evidence dispatches on kind: a lab grounds on its scraped self_description,
+                 PI, research_areas, and MEMBER_OF members (run-scoped); no pgvector (labs aren't
+                 embedded). The existing prompt already frames "a lab named X" — no prompt change.
+                 describe_run excludes nodes in the PUBLISHED run (build_lab_rows reuses legacy lab
+                 ids, so a published lab can be in a run's membership — it must never be re-described).
+                 Tested: new lab described (scrape -> grounded), legacy lab untouched, lab evidence
+                 (self-description + member) reaches the prompt. scripts/scrape_labs.py --describe
+                 wires the end-to-end command (scrape -> describe researchers + labs).

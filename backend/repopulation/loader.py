@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from collections import Counter
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from backend.repopulation.descriptions.build_rows import LEGACY_DESCRIPTION_MODEL
 from backend.repopulation.models.edges import Edge
 from backend.repopulation.models.membership import (
     PUBLISHED_RUN_KEY,
@@ -110,6 +111,35 @@ def load_import_rows(session: Session, rows: dict) -> dict:
         "relevance": session.scalar(select(func.count()).select_from(Relevance)),
         "source_records": session.scalar(select(func.count()).select_from(SourceRecord)),
     }
+
+
+def apply_description_updates(session: Session, updates: list[dict]) -> int:
+    """Write Phase-4 grounded descriptions onto their nodes (the node upsert is DO-NOTHING, so
+    descriptions need an explicit UPDATE). Defends snapshot isolation two ways: it NEVER touches a
+    legacy-DynamoDB description (so the published legacy graph's `about` is preserved), and it only
+    sets the four description fields (ai_description / description_model / description_generated_at /
+    description_evidence) — node identity, attributes, and confidence are untouched. Idempotent:
+    re-applying identical updates rewrites the same values. Returns the number of rows updated.
+    """
+    updated = 0
+    for u in updates:
+        result = session.execute(
+            update(Node)
+            .where(
+                Node.id == u["node_id"],
+                # IS DISTINCT FROM keeps a NULL description_model eligible while guarding legacy.
+                Node.description_model.is_distinct_from(LEGACY_DESCRIPTION_MODEL),
+            )
+            .values(
+                ai_description=u["ai_description"],
+                description_model=u["description_model"],
+                description_generated_at=u["description_generated_at"],
+                description_evidence=u["description_evidence"],
+            )
+        )
+        updated += result.rowcount or 0
+    session.commit()
+    return updated
 
 
 def get_published_run_id(session: Session) -> int | None:
