@@ -1,112 +1,112 @@
 # Paper Pigeon — Deployment status & remaining steps
 
-_Last updated after deploying the discovery service to fly.io._
+_Backend is live on fly.io. The frontend (Vercel) is the only thing between you and a fully working
+public site._
 
-## ✅ Done for you (backend on fly.io)
+## ✅ Done for you
 
-The **backend is fully live and verified** at **https://paper-pigeon-api.fly.dev**:
-
-- App `paper-pigeon-api` + managed Postgres `paper-pigeon-db` (attached → `DATABASE_URL` set).
-- Latest code deployed (the on-demand discovery service). Process model is now **`web`** (the API,
-  scale-to-zero) + **`worker`** (always-on, drains the discovery queue) — `fly status` shows web +
-  worker machines `started`.
-- Migrations applied through **0004** via the release command; the legacy graph is seeded
-  (`/api/graph/data` → 323 nodes / 1043 links).
-- Secrets set: `DATABASE_URL`, `OPENALEX_API_KEY`, `OPENROUTER_API_KEY`, and a new
-  **`DISCOVERY_API_KEY`** (the gate for the Discover box).
-- **Verified end-to-end in production:** auth gate returns 401 without the key; a real
-  *University of Toronto · machine learning* discovery ran on the deployed worker and produced run #2
-  (200 researchers, 80 grounded descriptions). Cache-hit + the failure path are covered by tests.
-
-> Operational note: discovery from a cloud IP is **slower than local** — OpenAlex throttles datacenter
-> IPs, so the discover phase took ~7 min for a large institution (vs ~15s locally). It still completes;
-> the per-job caps + daily budget make it safe. See "Optional tuning" below to speed it up / cut cost.
+- **Backend live** at **https://paper-pigeon-api.fly.dev** — app `paper-pigeon-api` + Postgres
+  `paper-pigeon-db`, web (scale-to-zero) + always-on worker, migrations through 0004, graph seeded
+  (323/1043). Secrets set: `DATABASE_URL`, `OPENALEX_API_KEY`, `OPENROUTER_API_KEY`, `DISCOVERY_API_KEY`.
+- **Verified in production:** auth gate (401 without key), and a real *University of Toronto* discovery
+  ran on the deployed worker → run #2 (200 researchers, 80 grounded descriptions).
+- **`vercel.json` rewrites fixed** (it was invalid JSON + missing the discovery routes). It now proxies
+  `graph/data`, `node/description`, `lab`, `runs`, `discover`, `discover/:id` to fly, leaving the AWS
+  endpoints on Flask. Already committed — you just need to deploy it (Step 2).
 
 ---
 
-## 🔑 First: secure your discovery key
+## Step 1 — Rotate the discovery key (2 minutes)
 
-I generated and set a `DISCOVERY_API_KEY` (its value is in our chat). **Rotate it to a value you
-control** so only you have it:
+I set a key for testing; replace it with one only you know. In a terminal (you're already `fly`-logged-in):
 
 ```bash
 fly secrets set DISCOVERY_API_KEY="$(openssl rand -hex 24)" -a paper-pigeon-api
-fly secrets list -a paper-pigeon-api          # confirm it's set (digest only)
 ```
-Keep this key private — it's what lets someone spend your OpenAlex/OpenRouter credits via Discover.
+- This prints nothing sensitive and restarts the machines (~30s).
+- **Copy the value you generate** — you'll paste it into the app's Discover box. (No `openssl`? Use any
+  long random string: `fly secrets set DISCOVERY_API_KEY="pp_live_8charsOrMore_random" -a paper-pigeon-api`.)
+- Verify: `fly secrets list -a paper-pigeon-api` shows `DISCOVERY_API_KEY` with a fresh digest.
 
 ---
 
-## ⏳ Remaining step 1 — Deploy the frontend to Vercel (the main one)
+## Step 2 — Deploy the frontend to Vercel (the main step, ~10 min)
 
-Nothing is on Vercel yet, so there's no website. The full click-by-click is in **`DEPLOY.md` §3**;
-the checklist:
+### 2a. Push the fixed vercel.json
+```bash
+git pull                      # get the vercel.json + REMAINING_STEPS.md I committed
+# (nothing else to do — vercel.json is already correct in the repo)
+```
 
-- [ ] **Route the new endpoints to fly.** Edit `vercel.json` to add these rewrites **above** the
-      existing `/api/(.*)` rule (so graph/description/lab/runs/discover hit fly, AWS endpoints stay on
-      Flask). Commit + push:
-      ```json
-      { "source": "/api/graph/data",      "destination": "https://paper-pigeon-api.fly.dev/api/graph/data" },
-      { "source": "/api/node/description", "destination": "https://paper-pigeon-api.fly.dev/api/node/description" },
-      { "source": "/api/lab",             "destination": "https://paper-pigeon-api.fly.dev/api/lab" },
-      { "source": "/api/runs",            "destination": "https://paper-pigeon-api.fly.dev/api/runs" },
-      { "source": "/api/discover",        "destination": "https://paper-pigeon-api.fly.dev/api/discover" },
-      { "source": "/api/discover/(.*)",   "destination": "https://paper-pigeon-api.fly.dev/api/discover/$1" }
+### 2b. Connect the repo to Vercel (first time only)
+1. Go to **https://vercel.com/new** (log in with **Continue with GitHub** if prompted).
+2. Under **Import Git Repository**, find **`sks17/PaperPigeon`** → click **Import**.
+   - Don't see it? Click **Adjust GitHub App Permissions** → grant Vercel access to that repo → come back.
+3. On the **Configure Project** screen, leave the auto-detected values:
+   - **Framework Preset:** `Vite`
+   - **Build Command:** `pnpm build`
+   - **Output Directory:** `dist`
+   - **Install Command:** `pnpm install`
+   - (Skip Environment Variables for now — see 2d.)
+4. Click **Deploy**. Wait ~1–2 min for the build → you get a URL like `https://paper-pigeon-xxxx.vercel.app`.
+
+### 2c. Verify the live site
+Open your Vercel URL and check:
+- [ ] The 3D graph renders (~323 nodes) — proves `/api/graph/data` is proxying to fly.
+- [ ] Click **Discover** (top-left), enter `Carnegie Mellon University`, topic `robotics`, paste your
+      key from Step 1, **Discover**. It shows "Discovering…/Describing…", then the new run auto-selects.
+      (First run for a big school can take a few minutes — that's OpenAlex throttling cloud IPs.)
+- [ ] Open one of the new researchers → the **"Grounded · cites N sources"** panel shows.
+- [ ] (Quick gut-check from a terminal) `curl https://YOUR-VERCEL-URL/api/runs` returns the run list.
+
+### 2d. (Optional) Turn on the AWS-backed features
+The graph + discovery work **without** this. Only do it if you want RAG chat / PDF links / resume
+recommendations (still served by the bundled Flask function):
+1. Vercel dashboard → your project → **Settings → Environment Variables**.
+2. Click **Add** for each (values from your AWS setup; see `VERCEL_ENV_VARIABLES.md`), **Environment =
+   Production**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `S3_BUCKET_NAME`,
+   `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_KNOWLEDGE_BASE_ID_2`.
+3. **Deployments** tab → **⋯** on the latest → **Redeploy**.
+
+> After this, every future `git push` to `main` auto-deploys the frontend on Vercel.
+
+---
+
+## Step 3 — Optional tuning (recommended once it works)
+
+Each `fly secrets set` restarts the worker (~30s; a job running at that moment gets requeued).
+
+- [ ] **Cheaper/faster jobs** (default is 80 descriptions/job):
+      ```bash
+      fly secrets set DISCOVERY_DESCRIBE_LIMIT=25 DISCOVERY_MAX_AUTHOR_PAGES=1 DISCOVERY_MAX_WORK_PAGES=1 -a paper-pigeon-api
       ```
-      (Keep `/api/(.*) → /api/index.py` and `/(.*) → /index.html` last.)
-- [ ] **Import the repo:** https://vercel.com/new → **Continue with GitHub** → find **PaperPigeon** →
-      **Import**. Framework auto-detects **Vite** (build `pnpm build`, output `dist`). Click **Deploy**.
-- [ ] **(Only if you want RAG chat / PDF / recommendations)** add the AWS env vars in Vercel
-      → Settings → Environment Variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`,
-      `S3_BUCKET_NAME`, `BEDROCK_KNOWLEDGE_BASE_ID`, `BEDROCK_KNOWLEDGE_BASE_ID_2` — see
-      `VERCEL_ENV_VARIABLES.md`), then redeploy. The graph + discovery features work without these.
-- [ ] **Verify:** open the Vercel URL → graph renders (323 nodes) → click **Discover**, enter an
-      institution + your key → the new run appears in the picker → open a researcher → grounded
-      "cites N sources" panel.
-
-> Alternative to the rewrites: set `VITE_API_BASE_URL=https://paper-pigeon-api.fly.dev` in the Vercel
-> project env and redeploy (DEPLOY.md §3.3). The graph/discovery calls go straight to fly;
-> `paper-lab-id` stays on Flask.
+- [ ] **Daily spend cap** (confirm/raise): `fly secrets set PAPERPIGEON_BUDGET_PRO_DAILY_USD=10 -a paper-pigeon-api`
+- [ ] **Faster discovery** (optional): the free OpenAlex tier throttles datacenter IPs hard — a paid key
+      makes cloud discovery much faster. Update with `fly secrets set OPENALEX_API_KEY=<paid key> -a paper-pigeon-api`.
 
 ---
 
-## ⏳ Remaining step 2 — Optional tuning (recommended for cost/speed)
+## Step 4 — Hardening before sharing the key widely (later)
 
-Discovery is bounded but defaults to 80 descriptions/job and can be slow from the cloud. To make jobs
-faster + cheaper, set worker env (a `fly secrets set` triggers a worker restart):
-
-- [ ] `fly secrets set DISCOVERY_DESCRIBE_LIMIT=25 DISCOVERY_MAX_AUTHOR_PAGES=1 DISCOVERY_MAX_WORK_PAGES=1 -a paper-pigeon-api`
-- [ ] Confirm/raise the daily cap: `fly secrets set PAPERPIGEON_BUDGET_PRO_DAILY_USD=10 -a paper-pigeon-api`
-- [ ] (Optional) If discovery is too slow, get a **paid-tier OpenAlex key** (datacenter IPs are
-      throttled on the free tier) and update `OPENALEX_API_KEY`.
-
----
-
-## ⏳ Remaining step 3 — Hardening follow-ups (before opening it up widely)
-
-- [ ] **Per-key quotas / rate limiting** — the single shared key has no per-caller cap; today only the
-      per-job caps + daily budget bound spend. Add per-key quotas before sharing the key broadly.
-- [ ] **Worker egress filtering** — add network egress rules on the worker to fully close the
-      sub-millisecond DNS-rebind SSRF window (the app already blocks private/metadata IPs; this is
-      defense-in-depth).
-- [ ] **Worker log visibility (minor):** the worker functions correctly but its stdout isn't surfacing
-      in `fly logs` yet — useful to fix for observability (e.g. log via `logging` to stderr).
+- [ ] **Per-key quotas / rate limiting** — today one shared key; spend is bounded only by per-job caps +
+      the daily budget. Add per-caller quotas before handing the key out broadly.
+- [ ] **Worker egress filtering** — network-level egress rules on the worker machine to fully close the
+      DNS-rebind SSRF window (the app already blocks private/metadata IPs; this is defense-in-depth).
+- [ ] **Worker log visibility (minor)** — the worker runs fine but its stdout isn't showing in
+      `fly logs`; switch its prints to `logging`→stderr so you can watch job progress.
 
 ---
 
-## Handy commands
+## Cheat sheet
 
 ```bash
-fly status   -a paper-pigeon-api          # machines (web + worker)
-fly logs     -a paper-pigeon-api          # tail logs
-fly secrets  list -a paper-pigeon-api     # what's configured
-fly scale    count web=1 worker=1 -a paper-pigeon-api   # ensure one of each
-fly deploy   -a paper-pigeon-api          # redeploy after a code change
-# trigger discovery from the CLI:
+fly status  -a paper-pigeon-api                    # web + worker machines
+fly logs    -a paper-pigeon-api                    # tail logs
+fly secrets list -a paper-pigeon-api               # what's configured (digests only)
+fly deploy  -a paper-pigeon-api                    # redeploy backend after a code change
+# trigger discovery from the CLI (sanity check the backend without the UI):
 curl -X POST https://paper-pigeon-api.fly.dev/api/discover \
   -H "X-Discovery-Key: <your key>" -H "Content-Type: application/json" \
   -d '{"institution":"Carnegie Mellon University","topic":"robotics"}'
+curl https://paper-pigeon-api.fly.dev/api/discover/<job_id> -H "X-Discovery-Key: <your key>"
 ```
-
-When the frontend is on Vercel, the whole loop is live: **type any university → watch it get
-discovered → explore its grounded research network.**

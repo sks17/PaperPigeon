@@ -1,18 +1,14 @@
 {
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/graph/data",       "destination": "https://paper-pigeon-api.fly.dev/api/graph/data" },
+    { "source": "/api/node/description",  "destination": "https://paper-pigeon-api.fly.dev/api/node/description" },
+    { "source": "/api/lab",               "destination": "https://paper-pigeon-api.fly.dev/api/lab" },
+    { "source": "/api/runs",              "destination": "https://paper-pigeon-api.fly.dev/api/runs" },
+    { "source": "/api/discover",          "destination": "https://paper-pigeon-api.fly.dev/api/discover" },
+    { "source": "/api/discover/:id",      "destination": "https://paper-pigeon-api.fly.dev/api/discover/:id" },
+    { "source": "/api/(.*)",              "destination": "/api/index.py" },
+    { "source": "/(.*)",                  "destination": "/index.html" }
   ],
-  "functions": {
-    "api/index.py": {
-      "includeFiles": "backend/**,public/graph_cache.json"
-    }
-  },
+  "functions": { "api/index.py": { "includeFiles": "backend/**,public/graph_cache.json" } },
   "ignoreCommand": "echo 'No ignore needed'"
 }
