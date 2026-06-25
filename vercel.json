@@ -9,6 +9,5 @@
     { "source": "/api/(.*)",              "destination": "/api/index.py" },
     { "source": "/(.*)",                  "destination": "/index.html" }
   ],
-  "functions": { "api/index.py": { "includeFiles": "backend/**,public/graph_cache.json" } },
-  "ignoreCommand": "echo 'No ignore needed'"
+  "functions": { "api/index.py": { "includeFiles": "backend/**,public/graph_cache.json" } }
 }
