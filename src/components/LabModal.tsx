@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { X, Building2, User } from 'lucide-react';
-import { type LabInfo, type Researcher } from '@/services/dynamodb';
+import { X, Building2, User, Tag, Globe, GraduationCap } from 'lucide-react';
+import { type LabInfo, type Researcher, type LabDetail, fetchLabDetail } from '@/services/dynamodb';
+import GroundedDescription from './GroundedDescription';
 
 interface LabModalProps {
   labId: string | null;
@@ -26,9 +27,26 @@ const LabModal: React.FC<LabModalProps> = ({
 }) => {
   const [isClosing, setIsClosing] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [detail, setDetail] = useState<LabDetail | null>(null);
+
+  // Fetch the Phase-4 enriched record (research areas / PI / homepage / grounded description).
+  useEffect(() => {
+    let active = true;
+    setDetail(null);
+    setShowFullDesc(false);
+    if (labId) {
+      fetchLabDetail(labId)
+        .then((d) => active && setDetail(d))
+        .catch(() => active && setDetail(null));
+    }
+    return () => {
+      active = false;
+    };
+  }, [labId]);
 
   // Hooks must be called unconditionally and in the same order
-  const description = labInfo?.description || '';
+  const description = detail?.description || labInfo?.description || '';
+  const researchAreas = detail?.research_areas ?? [];
   const hasFaculty = faculty && faculty.length > 0;
   const preview = useMemo(() => {
     const MAX = 240;
@@ -72,8 +90,8 @@ const LabModal: React.FC<LabModalProps> = ({
           </CardHeader>
           <CardContent className="space-y-6 max-h-[60vh] overflow-y-auto">
             {description && (
-              <div>
-                <div className="text-sm text-muted-foreground mb-1">Description</div>
+              <div className="space-y-2">
+                <div className="text-sm text-muted-foreground">Description</div>
                 <p className="text-base text-foreground leading-relaxed">
                   {showFullDesc ? description : preview}
                   {description.length > preview.length && (
@@ -82,7 +100,42 @@ const LabModal: React.FC<LabModalProps> = ({
                     </Button>
                   )}
                 </p>
+                <GroundedDescription nodeId={labId} inset={false} />
               </div>
+            )}
+
+            {detail?.pi && (
+              <div className="flex items-center gap-2 text-base">
+                <GraduationCap className="w-4 h-4 text-muted-foreground" />
+                <span className="text-muted-foreground">PI</span>
+                <span className="font-medium text-foreground">{detail.pi}</span>
+              </div>
+            )}
+
+            {researchAreas.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                  <Tag className="w-4 h-4" />
+                  <span>Research areas</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {researchAreas.map((area, i) => (
+                    <Badge key={i} variant="secondary" className="text-sm">{area}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {detail?.url && (
+              <a
+                href={detail.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+              >
+                <Globe className="w-4 h-4" />
+                Lab homepage
+              </a>
             )}
 
             {hasFaculty && (

@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Mail, Phone, Globe, GraduationCap, Building2, User, FileText, Calendar, X, Tag, ExternalLink, Loader2 } from 'lucide-react';
 import { type Researcher, type Paper, fetchPaperLabId } from '../services/dynamodb';
+import GroundedDescription from './GroundedDescription';
 
 interface ResearcherModalProps {
   researcher: Researcher | null;
@@ -207,6 +208,9 @@ const ResearcherModal: React.FC<ResearcherModalProps> = ({
                     );
                   })()}
                 </div>
+                {/* Provenance: shows the cited evidence when this `about` is an AI-grounded
+                    description (self-hides for legacy text). */}
+                <GroundedDescription nodeId={researcher.id} />
               </div>
             )}
 
