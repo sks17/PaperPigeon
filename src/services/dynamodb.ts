@@ -89,6 +89,16 @@ export interface LabDetail {
   faculty: { id: string; name: string }[];
 }
 
+/** A repopulation run available as a graph snapshot (GET /api/runs). */
+export interface RunSummary {
+  id: number;
+  seed: { institution?: string; topic?: string; source?: string; [key: string]: unknown };
+  status: string;
+  published: boolean;
+  nodes: number;
+  edges: number;
+}
+
 // ============================================================================
 // API Functions
 // ============================================================================
@@ -138,6 +148,20 @@ export async function fetchLabDetail(labId: string): Promise<LabDetail | null> {
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to fetch lab detail: ${res.status} ${res.statusText}`);
   return await res.json();
+}
+
+/**
+ * Lists repopulation run snapshots available to view. Returns [] on any failure (the legacy
+ * Flask backend has no /api/runs, so the run picker simply stays hidden there).
+ */
+export async function fetchRuns(): Promise<RunSummary[]> {
+  try {
+    const res = await fetch(apiUrl('/api/runs'));
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
 }
 
 /**

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from backend.repopulation.db import make_engine, make_session_factory
 from backend.repopulation.loader import graph_from_db
-from backend.repopulation.reads import lab_detail, node_description
+from backend.repopulation.reads import lab_detail, list_runs, node_description
 
 _session_factory = None
 
@@ -76,6 +76,11 @@ def create_app() -> FastAPI:
         if detail is None:
             raise HTTPException(status_code=404, detail="lab not found")
         return detail
+
+    @app.get("/api/runs")
+    def runs(session: Session = Depends(get_session)) -> list[dict]:
+        """List repopulation runs (id, seed, status, published, counts) for the run-snapshot picker."""
+        return list_runs(session)
 
     return app
 

@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import ForceGraph3D from '3d-force-graph';
 import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
-import { fetchGraphData, type GraphData, type Researcher, type Paper, type Node as GraphNode } from '../services/dynamodb';
+import { fetchGraphData, type GraphData, type Researcher, type Paper, type Node as GraphNode, type RunSummary } from '../services/dynamodb';
 import ResearcherProfilePanel from './ResearcherProfilePanel';
 import ResearcherModal from './ResearcherModal';
 import SearchBar from './SearchBar';
+import RunSelector from './RunSelector';
 import RecommendationsModal from './RecommendationsModal';
 import PaperChatModal from './PaperChatModal';
 import LabModal from './LabModal';
@@ -18,12 +19,18 @@ interface ResearchNetworkGraphProps {
   className?: string;
   graphData?: GraphData | null;
   loading?: boolean;
+  runs?: RunSummary[];
+  runId?: number | null;
+  onRunChange?: (runId: number | null) => void;
 }
 
-const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({ 
+const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
   className = '',
   graphData: propGraphData,
-  loading: propLoading
+  loading: propLoading,
+  runs = [],
+  runId = null,
+  onRunChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<any>(null);
@@ -526,6 +533,11 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
         </div>
       )}
       
+      {/* Run-snapshot picker (self-hides when there are no repopulation runs). */}
+      {onRunChange && (
+        <RunSelector runs={runs} value={runId} onChange={onRunChange} />
+      )}
+
       <SearchBar
         graphData={graphData}
         onNodeSelect={handleNodeSelect}

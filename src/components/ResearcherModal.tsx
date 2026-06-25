@@ -143,8 +143,8 @@ const ResearcherModal: React.FC<ResearcherModalProps> = ({
                       {researcher.standing}
                     </Badge>
                   )}
-                  {researcher.influence !== undefined && (
-                    <Badge 
+                  {researcher.influence != null && (
+                    <Badge
                       variant="secondary" 
                       className={`text-sm font-medium hover:!bg-inherit hover:!text-inherit ${
                         researcher.influence >= 80 

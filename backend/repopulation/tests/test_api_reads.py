@@ -115,3 +115,18 @@ def test_404_on_missing(client: TestClient) -> None:
 def test_lab_endpoint_rejects_non_lab(client: TestClient) -> None:
     # A researcher id is not a lab -> 404 (kind guard).
     assert client.get("/api/lab", params={"id": RESEARCHER}).status_code == 404
+
+
+def test_list_runs(client: TestClient) -> None:
+    resp = client.get("/api/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    # The fixture loaded the legacy run (auto-published) + one small unpublished run.
+    by_published = {r["published"]: r for r in runs}
+    assert True in by_published and False in by_published
+    legacy = by_published[True]
+    assert legacy["status"] == "succeeded" and legacy["nodes"] == 323  # the legacy run's membership
+
+    other = by_published[False]
+    assert other["seed"].get("topic") == "vision"
+    assert other["nodes"] == 2 and other["status"] == "succeeded"  # the researcher + lab added

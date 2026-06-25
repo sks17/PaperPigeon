@@ -4,7 +4,9 @@ Boots pgserver (data dir .pg/), applies the migration, idempotently loads the le
 then serves backend.repopulation.api:app via uvicorn on :8000. Vite dev (port 5173) proxies
 /api -> :8000 (see vite.config.ts), so the existing frontend renders off the new backend.
 
-Run:  .venv/Scripts/python.exe scripts/run_local_stack.py
+Run:  .venv/Scripts/python.exe scripts/run_local_stack.py [--demo]
+  --demo  also seeds a small GROUNDED repopulation run (no network), so the run-snapshot picker
+          and the grounded-description provenance UI are demonstrable out of the box.
 Prints 'STACK_READY ...' once the API is up. Ctrl-C to stop (pgserver is cleaned up).
 """
 from __future__ import annotations
@@ -28,6 +30,7 @@ PORT = int(os.environ.get("PORT", "8000"))
 
 
 def main() -> int:
+    demo = "--demo" in sys.argv[1:]
     pgdata = ROOT / ".pg"
     pgdata.mkdir(exist_ok=True)
     srv = pgserver.get_server(pgdata)
@@ -38,11 +41,21 @@ def main() -> int:
         factory = make_session_factory(make_engine(uri))
         with factory() as session:
             counts = load_import_rows(session, cache_to_rows(json.loads(CACHE.read_text("utf-8"))))
+
+        demo_info = None
+        if demo:
+            from scripts.demo_data import seed_demo_run  # local import: dev/demo only
+
+            with factory() as session:
+                demo_info = seed_demo_run(session)
+
         os.environ["DATABASE_URL"] = uri  # backend.repopulation.api reads this lazily
 
         import uvicorn
 
         print(f"STACK_READY api=http://127.0.0.1:{PORT} loaded={counts}", flush=True)
+        if demo_info:
+            print(f"DEMO_RUN {demo_info}", flush=True)
         uvicorn.run("backend.repopulation.api:app", host="127.0.0.1", port=PORT, log_level="warning")
         return 0
     finally:

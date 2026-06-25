@@ -9,10 +9,37 @@ Read-only; no writes, no graph mutation — purely additive surface over the exi
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.repopulation.models.nodes import Node
+from backend.repopulation.loader import get_published_run_id
+from backend.repopulation.models.membership import RunEdge, RunNode
+from backend.repopulation.models.nodes import Node, RepopulationRun
+
+
+def list_runs(session: Session) -> list[dict]:
+    """All repopulation runs with their seed, status, snapshot counts, and whether each is the
+    published (default-served) run. Backs GET /api/runs so the UI can offer run snapshots — the
+    place a user reaches grounded descriptions that aren't on the published graph yet."""
+    published = get_published_run_id(session)
+    runs = session.scalars(select(RepopulationRun).order_by(RepopulationRun.id)).all()
+    out: list[dict] = []
+    for run in runs:
+        nodes = session.scalar(
+            select(func.count()).select_from(RunNode).where(RunNode.run_id == run.id)
+        )
+        edges = session.scalar(
+            select(func.count()).select_from(RunEdge).where(RunEdge.run_id == run.id)
+        )
+        out.append({
+            "id": run.id,
+            "seed": run.seed or {},
+            "status": run.status,
+            "published": run.id == published,
+            "nodes": nodes or 0,
+            "edges": edges or 0,
+        })
+    return out
 
 
 def node_description(session: Session, node_id: str) -> dict | None:
