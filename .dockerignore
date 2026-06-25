@@ -1,0 +1,22 @@
+# Keep the API image lean — ship only backend code, scripts, and the seed cache (see Dockerfile).
+.git
+node_modules
+dist
+.venv
+venv
+.pg
+.raw_cache
+.pytest_cache
+__pycache__
+*.pyc
+.budget_ledger.json
+src
+public/*
+!public/graph_cache.json
+e2e
+test-results
+playwright-report
+*.gif
+*.png
+.env
+.env.*

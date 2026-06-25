@@ -1,0 +1,40 @@
+# fly.io config for the Repopulation API (the forward FastAPI + Postgres backend).
+#
+# One-time setup (run by a human with a fly account — see CUTOVER.md):
+#   fly launch --no-deploy --copy-config        # or `fly apps create paper-pigeon-api`
+#   fly postgres create --name paper-pigeon-db  # managed Postgres 16 (has pgvector)
+#   fly postgres attach paper-pigeon-db         # sets DATABASE_URL secret on this app
+#   fly secrets set OPENALEX_API_KEY=… OPENROUTER_API_KEY=… PAPERPIGEON_BUDGET_PRO_DAILY_USD=10
+#   fly deploy                                  # builds Dockerfile, runs release_command, starts
+#
+# `app` is a placeholder — set it to your created app name before `fly deploy`.
+app = "paper-pigeon-api"
+primary_region = "sea"   # Seattle — close to the UW data / the Vercel frontend's users
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Apply migrations + seed the legacy graph before the new version takes traffic (idempotent).
+  release_command = "python scripts/prod_migrate_seed.py"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"     # scale to zero when idle (read-mostly graph API)
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -68,13 +68,15 @@ jobs:
       - run: pip install pip-audit && pip-audit -r requirements.txt || true
 
   backend-tests:
-    name: backend tests (stub — wired in per layer)
+    name: backend tests (pytest + pgserver)
     runs-on: ubuntu-latest
-    if: false   # flip to true once the Repopulation Engine has its first pytest suite
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python -m pytest -q
+          cache: pip
+      # requirements-dev pulls the legacy + engine runtime deps, pytest, httpx, and pgserver
+      # (no-Docker Postgres+pgvector) so the full suite — pure + integration — runs in CI.
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest backend/repopulation/tests -q
