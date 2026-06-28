@@ -1,70 +1,48 @@
 /**
- * Paper Pigeon - Root Application Component
+ * Paper Pigeon — Root Application Component
  *
- * Handles routing between the main 3D graph view and VR mode.
- * Graph data is fetched once at the app level and passed down to child routes.
+ * Routes:
+ *   /      → marketing landing (front door, text-only)
+ *   /docs  → release notes / design docs
+ *   /app   → the 3-D research graph (the application)
+ *   /vr    → immersive VR view of the graph
+ *
+ * The landing + docs are eager and tiny. The graph (and its heavy 3-D / VR libraries) is lazily
+ * code-split behind /app and /vr, so the front door loads as fast as plain text. Graph data + run
+ * state live in GraphApp, shared across /app and /vr.
  */
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import ResearchNetworkGraph from './components/ResearchNetworkGraph'
-import VRGraph from './components/VRGraph'
 import { AccessibilityProvider } from './contexts/AccessibilityContext'
-import { fetchGraphData, fetchRuns, type GraphData, type RunSummary } from './services/dynamodb'
+import Landing from './pages/Landing'
+import Docs from './pages/Docs'
+
+const GraphApp = lazy(() => import('./components/GraphApp').then((m) => ({ default: m.GraphApp })))
+const GraphScreen = lazy(() => import('./components/GraphApp').then((m) => ({ default: m.GraphScreen })))
+const VrScreen = lazy(() => import('./components/GraphApp').then((m) => ({ default: m.VrScreen })))
+
+function GraphLoading() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-white">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+    </div>
+  )
+}
 
 function App() {
-  const [graphData, setGraphData] = useState<GraphData | null>(null)
-  const [loading, setLoading] = useState(true)
-  // null = the published graph; a run id = that repopulation run's snapshot (where grounded data lives).
-  const [runId, setRunId] = useState<number | null>(null)
-  const [runs, setRuns] = useState<RunSummary[]>([])
-
-  // Discover available run snapshots once (silently empty against backends without /api/runs).
-  useEffect(() => {
-    fetchRuns().then(setRuns).catch(() => setRuns([]))
-  }, [])
-
-  // After a discovery job finishes: refresh the run list and switch to the new run.
-  const handleDiscovered = (newRunId: number) => {
-    fetchRuns().then(setRuns).catch(() => setRuns([]))
-    setRunId(newRunId)
-  }
-
-  // (Re)load the graph whenever the selected run changes.
-  useEffect(() => {
-    let active = true
-    setLoading(true)
-    fetchGraphData(runId ?? undefined)
-      .then((data) => active && setGraphData(data))
-      .catch((err) => {
-        console.error('Failed to load graph data:', err)
-        if (active) setGraphData({ nodes: [], links: [] })
-      })
-      .finally(() => active && setLoading(false))
-    return () => {
-      active = false
-    }
-  }, [runId])
-
   return (
     <BrowserRouter>
       <AccessibilityProvider>
-        <Routes>
-          <Route path="/" element={
-            <div className="w-full h-screen">
-              <ResearchNetworkGraph
-                graphData={graphData}
-                loading={loading}
-                runs={runs}
-                runId={runId}
-                onRunChange={setRunId}
-                onDiscovered={handleDiscovered}
-              />
-            </div>
-          } />
-          <Route path="/vr" element={
-            <VRGraph graphData={graphData} loading={loading} />
-          } />
-        </Routes>
+        <Suspense fallback={<GraphLoading />}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/docs" element={<Docs />} />
+            <Route element={<GraphApp />}>
+              <Route path="/app" element={<GraphScreen />} />
+              <Route path="/vr" element={<VrScreen />} />
+            </Route>
+          </Routes>
+        </Suspense>
       </AccessibilityProvider>
     </BrowserRouter>
   )

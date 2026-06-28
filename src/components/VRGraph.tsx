@@ -93,7 +93,7 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
           <h2 className="text-xl font-semibold text-white mb-2">No Graph Data</h2>
           <p className="text-gray-400 mb-4">Graph data is required for VR mode.</p>
           <Link
-            to="/"
+            to="/app"
             className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
           >
             Return to 3D View
@@ -115,7 +115,7 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
             VR mode requires WebXR support. Please use a compatible browser or VR headset.
           </p>
           <Link
-            to="/"
+            to="/app"
             className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
           >
             Return to 3D View
@@ -145,7 +145,7 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
         {/* Exit VR button */}
         <div className="absolute top-4 left-4" style={{ pointerEvents: 'auto' }}>
           <Link
-            to="/"
+            to="/app"
             className="px-4 py-2 bg-gray-800/90 hover:bg-gray-700 text-white rounded-lg border border-gray-600 transition-colors flex items-center gap-2"
           >
             <span>←</span>
