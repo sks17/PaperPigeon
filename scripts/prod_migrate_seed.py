@@ -21,7 +21,6 @@ import psycopg  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from backend.repopulation.db import make_engine, make_session_factory, migration_files  # noqa: E402
-from backend.repopulation.examples.seed import seed_example_runs  # noqa: E402
 from backend.repopulation.importer.cache_to_rows import cache_to_rows  # noqa: E402
 from backend.repopulation.loader import load_import_rows  # noqa: E402
 from backend.repopulation.models.nodes import Node  # noqa: E402
@@ -58,11 +57,11 @@ def main() -> int:
             )
             print(f"seeded legacy graph: {counts}")
 
-        # Committed example run snapshots (e.g. University of Toronto), idempotent + never published —
-        # they appear only in the run-snapshot picker, leaving the default served graph unchanged.
-        example_status = seed_example_runs(session)
-        print(f"example runs: {example_status or 'none'}")
-
+    # NOTE: committed example run snapshots (e.g. University of Toronto) are seeded by the worker on
+    # boot (backend.repopulation.worker), NOT here. Their load does thousands of per-row round-trips,
+    # which on a remote managed Postgres overruns fly's release-command timeout and aborts the whole
+    # deploy. Keeping this release command to migrations + the small legacy seed keeps deploys fast
+    # and reliable; the always-on worker seeds examples in the background (idempotent).
     print("prod migrate + seed complete.")
     return 0
 

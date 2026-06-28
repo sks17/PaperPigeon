@@ -237,6 +237,23 @@ def handle_failure(session_factory, job_id: int, exc: Exception) -> None:
         session.commit()
 
 
+def seed_examples(session_factory) -> None:
+    """Idempotently seed the committed example run snapshots (e.g. University of Toronto) on boot.
+
+    Done HERE rather than in the deploy's release command because load_import_rows does many per-row
+    round-trips; on a remote managed Postgres that load overruns fly's release-command timeout and
+    aborts the deploy. The worker has no such timeout, so it seeds in the background. Idempotent
+    (skips runs already present) and fault-tolerant — a seed failure must never stop job draining."""
+    try:
+        from backend.repopulation.examples.seed import seed_example_runs
+
+        with session_factory() as session:
+            status = seed_example_runs(session)
+        print(f"worker {WORKER_ID}: example runs: {status or 'none'}", flush=True)
+    except Exception as exc:  # noqa: BLE001 — bootstrap data is non-critical; never block the worker
+        print(f"worker {WORKER_ID}: example seed skipped ({type(exc).__name__}: {exc})", flush=True)
+
+
 def reap_orphans(session_factory) -> None:
     """On boot, recover jobs left 'running' by a killed worker: requeue (attempts+1), dead-letter
     after MAX_ATTEMPTS."""
@@ -283,6 +300,7 @@ def main() -> int:
     factory = make_session_factory(make_engine())
     _install_signal_handlers()
     reap_orphans(factory)
+    seed_examples(factory)
     print(f"discovery worker {WORKER_ID} started (poll={POLL_INTERVAL}s)", flush=True)
 
     while not _stop:

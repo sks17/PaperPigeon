@@ -12,8 +12,9 @@ public site._
   ran on the deployed worker → run #2 (200 researchers, 80 grounded descriptions).
   - ⚠️ That run #2 was built with the **old** discovery code (sparse co-authorship, no labs). It has
     been **recreated with the new approach** and now ships as a committed example snapshot
-    (`backend/repopulation/examples/university_of_toronto.json`), seeded idempotently on every deploy
-    by `scripts/prod_migrate_seed.py` → `examples/seed.py`. The shipped example carries a distinct
+    (`backend/repopulation/examples/university_of_toronto.json`), seeded idempotently by the
+    **worker on boot** (`examples/seed.py`; kept off the deploy's release command because the load is
+    too slow for fly's release-command timeout). The shipped example carries a distinct
     `seed.example=true`, so it seeds as its own canonical run and never collides with run #2.
   - **One-time cleanup on the live DB:** drop the stale run #2 with the guarded cleanup script
     (dry-run first; it refuses to touch the published graph and preserves anything another run shares).
