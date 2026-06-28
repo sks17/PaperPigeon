@@ -85,12 +85,21 @@ def _registrable_domain(host: str | None) -> str | None:
 
 
 def _build_clients(session_factory):
-    """Wire the live clients exactly as scripts/scrape_labs.py does (one HttpClient serves both the
-    JSON APIs and arbitrary-domain scraping; get_text bypasses the fixed allowlist — see http.py)."""
-    openalex_key = os.environ.get("OPENALEX_API_KEY")
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-    if not openalex_key or not openrouter_key:
-        raise RuntimeError("OPENALEX_API_KEY and OPENROUTER_API_KEY must be set for the worker")
+    """Wire the live clients (one HttpClient serves both the JSON APIs and arbitrary-domain scraping;
+    get_text bypasses the fixed allowlist — see http.py).
+
+    Both upstream keys are OPTIONAL so the engine degrades gracefully instead of crashing a job:
+      - OpenAlex without a key uses the keyless/polite pool (lower rate limit, identified by the
+        mailto User-Agent) — enough for on-demand single-institution discovery.
+      - OpenRouter absent disables embeddings + grounded descriptions; the core graph (researchers,
+        co-authorship, estimated labs) is still built. Production sets both keys, so its behavior is
+        unchanged; this only changes what happens when a key is missing."""
+    openalex_key = os.environ.get("OPENALEX_API_KEY") or None
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY") or None
+    if not openalex_key:
+        print("worker: OPENALEX_API_KEY not set — using OpenAlex keyless polite pool", flush=True)
+    if not openrouter_key:
+        print("worker: OPENROUTER_API_KEY not set — skipping embeddings + descriptions", flush=True)
 
     cap_env = os.getenv("PAPERPIGEON_BUDGET_PRO_DAILY_USD")
     budget = DbDailyBudget(session_factory, float(cap_env) if cap_env else None, _now().date())
@@ -101,8 +110,8 @@ def _build_clients(session_factory):
         "budget": budget,
         "ror": RorClient(http),
         "openalex": OpenAlexClient(http, api_key=openalex_key, budget=budget),
-        "embeddings": EmbeddingsClient(http, openrouter_key, budget=budget),
-        "llm": LlmClient(http, openrouter_key, budget=budget),
+        "embeddings": EmbeddingsClient(http, openrouter_key, budget=budget) if openrouter_key else None,
+        "llm": LlmClient(http, openrouter_key, budget=budget) if openrouter_key else None,
         "robots": RobotsCache(http, USER_AGENT),
     }
 
@@ -149,17 +158,21 @@ def process_job(session_factory, job_id: int) -> None:
             max_author_pages=MAX_AUTHOR_PAGES, max_work_pages=MAX_WORK_PAGES,
         )
         run_id = repop["run_id"]
-        _set(session, job_id, run_id=run_id, stage="describing")
 
-        # ── grounded researcher descriptions ──────────────────────────────────
-        describe_run(
-            session, run_id, llm=clients["llm"], generated_at=generated_at,
-            model=clients["llm"].model, embedding_model=clients["embeddings"].model,
-            kinds=("researcher",), limit=DESCRIBE_LIMIT,
-        )
+        # ── grounded researcher descriptions (only when an LLM provider is configured) ──
+        if clients["llm"] is not None:
+            _set(session, job_id, run_id=run_id, stage="describing")
+            describe_run(
+                session, run_id, llm=clients["llm"], generated_at=generated_at,
+                model=clients["llm"].model,
+                embedding_model=clients["embeddings"].model if clients["embeddings"] else None,
+                kinds=("researcher",), limit=DESCRIBE_LIMIT,
+            )
+        else:
+            _set(session, job_id, run_id=run_id, stage="describing")
 
-        # ── optional lab scraping + lab descriptions ──────────────────────────
-        if scrape:
+        # ── optional lab scraping + lab descriptions (needs the LLM extractor) ──
+        if scrape and clients["llm"] is not None:
             _set(session, job_id, stage="scraping")
             _scrape_labs(session, clients, seed, run_id, generated_at)
 
@@ -195,7 +208,8 @@ def _scrape_labs(session, clients, seed, run_id, generated_at) -> None:
     )
     describe_run(
         session, run_id, llm=clients["llm"], generated_at=generated_at,
-        model=clients["llm"].model, embedding_model=clients["embeddings"].model,
+        model=clients["llm"].model,
+        embedding_model=clients["embeddings"].model if clients["embeddings"] else None,
         kinds=("researcher", "lab"), limit=DESCRIBE_LIMIT,
     )
 
