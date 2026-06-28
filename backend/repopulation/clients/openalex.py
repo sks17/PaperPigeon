@@ -68,6 +68,36 @@ class OpenAlexClient:
             "works", filter=",".join(filters), select=select, per_page=per_page, max_pages=max_pages
         )
 
+    # OpenAlex accepts up to 100 OR-values per filter (`author.id:A1|A2|...`); batch the cohort
+    # so the works sweep returns the discovered authors' OWN papers — the only way co-authorship
+    # within the cohort is captured densely regardless of institution size.
+    AUTHOR_FILTER_BATCH = 100
+
+    def iter_works_by_authors(
+        self,
+        author_ids: "list[str]",
+        *,
+        from_year: int | None = None,
+        topic_id: str | None = None,
+        select: str | None = None,
+        per_page: int = 200,
+        max_pages: int = 50,
+    ) -> Iterator[dict]:
+        """Works authored by any of `author_ids`, fetched in OR-batches. Pages are capped per
+        batch so the per-job cost stays bounded as the cohort grows."""
+        ids = [short_id(a) for a in author_ids if a]
+        for start in range(0, len(ids), self.AUTHOR_FILTER_BATCH):
+            batch = ids[start : start + self.AUTHOR_FILTER_BATCH]
+            filters = [f"author.id:{'|'.join(batch)}"]
+            if from_year is not None:
+                filters.append(f"from_publication_date:{from_year}-01-01")
+            if topic_id is not None:
+                filters.append(f"topics.id:{short_id(topic_id)}")
+            yield from self._cursor(
+                "works", filter=",".join(filters), select=select,
+                per_page=per_page, max_pages=max_pages,
+            )
+
     # Author objects don't carry their works; assemble them so each author dict has the
     # `recent_works` key the parser + build_rows expect (also the source of co-authorship).
     AUTHOR_SELECT = (
@@ -85,24 +115,38 @@ class OpenAlexClient:
         max_author_pages: int = 50,
         max_work_pages: int = 50,
     ) -> list[dict]:
-        """Authors at the institution, each with `recent_works` attached from the works sweep."""
+        """Authors at the institution, each with `recent_works` attached.
+
+        Works are fetched BY the discovered authors (`author.id` OR-batches), not by institution:
+        this guarantees every cohort author's own recent papers come back, so any pair of cohort
+        members who co-authored a paper is recoverable as a COAUTHORED_WITH edge. The institution
+        works sweep returned an arbitrary, default-ordered slice that rarely overlapped two cohort
+        members, which is why large institutions produced almost no researcher-researcher links.
+        """
         authors: dict[str, dict] = {}
+        order: list[str] = []
         for author in self.iter_authors_by_institution(
             institution_id, select=self.AUTHOR_SELECT, max_pages=max_author_pages
         ):
             author["recent_works"] = []
             authors[author["id"]] = author
+            order.append(author["id"])
 
-        for work in self.iter_works_by_institution(
-            institution_id, from_year=from_year, topic_id=topic_id,
+        # Dedup works first (a paper co-authored across two batches is returned twice), then attach
+        # each once to every cohort author listed on it — that intersection IS the co-authorship.
+        works_by_id: dict[str, dict] = {}
+        for work in self.iter_works_by_authors(
+            order, from_year=from_year, topic_id=topic_id,
             select=self.WORK_SELECT, max_pages=max_work_pages,
         ):
+            works_by_id.setdefault(work["id"], work)
+        for work in works_by_id.values():
             for authorship in work.get("authorships", []):
                 author_id = (authorship.get("author") or {}).get("id")
                 if author_id in authors:
                     authors[author_id]["recent_works"].append(work)
 
-        return list(authors.values())
+        return [authors[author_id] for author_id in order]
 
     def _cursor(self, entity: str, *, filter: str, select, per_page, max_pages) -> Iterator[dict]:
         cursor = "*"

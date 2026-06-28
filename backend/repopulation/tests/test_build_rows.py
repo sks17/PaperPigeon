@@ -179,3 +179,33 @@ def test_coauthored_with_weight_equals_number_of_joint_works() -> None:
     # One undirected pair → exactly one directed edge (ordered by author id).
     assert len(coauthored) == 1
     assert coauthored[0]["weight"] == len(shared_works)
+
+
+def test_estimated_lab_emitted_for_a_coauthoring_group() -> None:
+    """A connected group of researchers yields an estimated lab + MEMBER_OF edges through the full
+    builder — the fallback that gives a novel university lab affiliations without scraping."""
+    shared = ["W_GROUP_1", "W_GROUP_2"]
+    authors = [
+        parse_openalex_author(
+            _author_payload(f"A{i}", f"0000-0002-0000-000{i}", f"Author {i}", shared)
+        )
+        for i in range(1, 4)
+    ]
+
+    rows = _build_from_fixtures(authors)
+
+    labs = _nodes_of_kind(rows, "lab")
+    assert len(labs) == 1
+    assert labs[0]["attributes"]["estimated"] is True
+    assert labs[0]["confidence"] < 1.0
+
+    member_edges = _edges_of_type(rows, "MEMBER_OF")
+    assert len(member_edges) == 3
+    assert {e["dst_id"] for e in member_edges} == {labs[0]["id"]}
+
+    # The estimate carries its own provenance record (source 'ai') alongside OpenAlex + ROR.
+    assert labs[0]["attributes"]["method"] == "coauthorship"
+    estimate_key = labs[0]["source_record_key"]
+    keys = {s["key"]: s for s in rows["source_records"]}
+    assert estimate_key in keys
+    assert keys[estimate_key]["source"] == "ai"

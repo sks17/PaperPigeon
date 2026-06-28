@@ -16,6 +16,8 @@ import re
 from itertools import combinations
 from typing import TYPE_CHECKING, Any
 
+from backend.repopulation.discovery.estimate_labs import estimate_labs
+
 if TYPE_CHECKING:  # type hints only — no runtime dependency, keeps this transform decoupled.
     from backend.repopulation.sources.openalex_parse import OpenAlexAuthor, OpenAlexWork
     from backend.repopulation.sources.ror_parse import RorOrganization
@@ -144,17 +146,39 @@ def build_import_rows(
             _add_edge(author.id, topic.id, WORKS_ON, _topic_share(topic.score), openalex_key)
 
     # ── co-authorship edges: pairs sharing a work within the discovered set ───
-    for (src_id, dst_id), joint_works in sorted(_coauthor_weights(authors).items()):
+    coauthor_weights = _coauthor_weights(authors)
+    for (src_id, dst_id), joint_works in sorted(coauthor_weights.items()):
         _add_edge(src_id, dst_id, COAUTHORED_WITH, float(joint_works), openalex_key)
+
+    source_records = [
+        _source_record_row(openalex_key, "openalex", run_key,
+                           "OpenAlex authors/works for the seed institution"),
+        _source_record_row(ror_key, "ror", run_key,
+                           "ROR organization record for the seed institution"),
+    ]
+
+    # ── estimated lab affiliations: research groups inferred from the co-authorship graph ──
+    # Fills the lab gap when (or before) the scraper finds real lab pages; each row is flagged
+    # `estimated` with sub-1.0 confidence so a later scrape supersedes it. Skipped silently when
+    # no community is large enough, so a single-author cohort emits no estimate provenance.
+    estimate_key = source_keys.get("estimate", "estimate")
+    estimated = estimate_labs(
+        institution_id, authors, coauthor_weights, run_key, estimate_key
+    )
+    for row in estimated["nodes"]:
+        if row["id"] not in seen_node_ids:
+            seen_node_ids.add(row["id"])
+            nodes.append(row)
+    for row in estimated["edges"]:
+        key = (row["src_id"], row["dst_id"], row["type"])
+        if key not in seen_edge_keys:
+            seen_edge_keys.add(key)
+            edges.append(row)
+    source_records.extend(estimated["source_records"])
 
     return {
         "runs": [{"key": run_key, "seed": seed, "status": "running"}],
-        "source_records": [
-            _source_record_row(openalex_key, "openalex", run_key,
-                               "OpenAlex authors/works for the seed institution"),
-            _source_record_row(ror_key, "ror", run_key,
-                               "ROR organization record for the seed institution"),
-        ],
+        "source_records": source_records,
         "nodes": nodes,
         "edges": edges,
         "relevance": [],

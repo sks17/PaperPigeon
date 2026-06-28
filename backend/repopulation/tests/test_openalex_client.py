@@ -115,6 +115,98 @@ def test_iter_works_uses_id_filters_and_stops_at_max_pages() -> None:
     _assert_no_search_param(stub)
 
 
+def test_iter_works_by_authors_or_batches_and_combines_filters() -> None:
+    stub = StubHttp(
+        {
+            "https://api.openalex.org/works": [
+                {"results": [{"id": "https://openalex.org/W1"}], "meta": {"next_cursor": None}},
+            ]
+        }
+    )
+    client = OpenAlexClient(stub)
+
+    works = list(
+        client.iter_works_by_authors(
+            ["https://openalex.org/A1", "A2"],
+            from_year=2024,
+            topic_id="https://openalex.org/T9",
+            select="id,authorships",
+            max_pages=1,
+        )
+    )
+
+    assert [w["id"] for w in works] == ["https://openalex.org/W1"]
+    # Cohort ids are OR'd into one filter and AND-combined with the date/topic filters.
+    assert stub.params_for("/works") == [
+        {
+            "filter": "author.id:A1|A2,from_publication_date:2024-01-01,topics.id:T9",
+            "cursor": "*",
+            "per-page": 200,
+            "select": "id,authorships",
+        }
+    ]
+    _assert_no_search_param(stub)
+
+
+def test_iter_works_by_authors_splits_oversized_cohorts() -> None:
+    stub = StubHttp(
+        {
+            "https://api.openalex.org/works": [
+                {"results": [], "meta": {"next_cursor": None}},
+                {"results": [], "meta": {"next_cursor": None}},
+            ]
+        }
+    )
+    client = OpenAlexClient(stub)
+    cohort = [f"A{i}" for i in range(OpenAlexClient.AUTHOR_FILTER_BATCH + 1)]
+
+    list(client.iter_works_by_authors(cohort, max_pages=1))
+
+    # 101 authors → two OR-batches → two list calls, each filtering on a slice of the cohort.
+    calls = stub.params_for("/works")
+    assert len(calls) == 2
+    assert calls[0]["filter"].count("|") == OpenAlexClient.AUTHOR_FILTER_BATCH - 1
+    assert calls[1]["filter"] == "author.id:A100"
+
+
+def test_discover_authors_links_cohort_coauthors_via_their_own_works() -> None:
+    """A paper co-authored by two cohort members is recoverable even though it was fetched by the
+    author filter, not an institution slice — this is the fix for sparse co-authorship."""
+    author_one = {"id": "https://openalex.org/A1", "display_name": "Author One"}
+    author_two = {"id": "https://openalex.org/A2", "display_name": "Author Two"}
+    shared = {
+        "id": "https://openalex.org/W_SHARED",
+        "authorships": [
+            {"author": {"id": "https://openalex.org/A1"}},
+            {"author": {"id": "https://openalex.org/A2"}},
+        ],
+    }
+    stub = StubHttp(
+        {
+            "https://api.openalex.org/authors": [
+                {"results": [author_one, author_two], "meta": {"next_cursor": None}},
+            ],
+            # The same paper is returned in both author batches — must be attached, not duplicated.
+            "https://api.openalex.org/works": [
+                {"results": [shared], "meta": {"next_cursor": None}},
+            ],
+        }
+    )
+    client = OpenAlexClient(stub)
+
+    discovered = client.discover_authors(
+        "https://openalex.org/I123", max_author_pages=1, max_work_pages=1
+    )
+
+    works_by_author = {a["id"]: [w["id"] for w in a["recent_works"]] for a in discovered}
+    assert works_by_author == {
+        "https://openalex.org/A1": ["https://openalex.org/W_SHARED"],
+        "https://openalex.org/A2": ["https://openalex.org/W_SHARED"],
+    }
+    # Works are fetched by author id, never by institution.
+    assert stub.params_for("/works")[0]["filter"].startswith("author.id:")
+
+
 def test_discover_authors_attaches_recent_works_from_authorships() -> None:
     author_one = {"id": "https://openalex.org/A1", "display_name": "Author One"}
     author_two = {"id": "https://openalex.org/A2", "display_name": "Author Two"}
