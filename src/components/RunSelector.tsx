@@ -21,9 +21,11 @@ interface RunSelectorProps {
   runs: RunSummary[];
   value: number | null; // null = the published graph
   onChange: (runId: number | null) => void;
+  /** 'pill' = standalone floating pill; 'inline' = bare trigger meant to sit inside another pill (e.g. the search bar). */
+  variant?: 'pill' | 'inline';
 }
 
-const RunSelector: React.FC<RunSelectorProps> = ({ runs, value, onChange }) => {
+const RunSelector: React.FC<RunSelectorProps> = ({ runs, value, onChange, variant = 'pill' }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -70,12 +72,19 @@ const RunSelector: React.FC<RunSelectorProps> = ({ runs, value, onChange }) => {
     </button>
   );
 
+  const inline = variant === 'inline';
+
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/95 backdrop-blur border shadow hover:shadow-lg transition-all duration-200 text-sm max-w-[19rem]"
+        title={inline ? `Data source: ${label}` : undefined}
+        className={
+          inline
+            ? 'flex items-center gap-1.5 max-w-[11rem] text-sm text-foreground/90 hover:text-foreground transition-colors'
+            : 'flex items-center gap-2 px-4 py-2 rounded-full bg-white/95 backdrop-blur border shadow hover:shadow-lg transition-all duration-200 text-sm max-w-[19rem]'
+        }
       >
         <Layers className="w-4 h-4 shrink-0 text-muted-foreground" />
         <span className="font-medium truncate">{label}</span>
@@ -87,7 +96,7 @@ const RunSelector: React.FC<RunSelectorProps> = ({ runs, value, onChange }) => {
       </button>
 
       {open && (
-        <div className="mt-2 w-80 max-h-[60vh] overflow-y-auto rounded-xl border bg-card shadow-xl p-1.5">
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 max-h-[60vh] overflow-y-auto rounded-xl border bg-card shadow-xl p-1.5">
           <Option
             active={value == null}
             onSelect={() => {

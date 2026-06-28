@@ -537,21 +537,6 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
         </div>
       )}
       
-      {/* Discover a new ecosystem + run-snapshot picker (picker self-hides with no runs). */}
-      <div className="fixed top-[4.75rem] left-6 z-30 flex items-start gap-2">
-        {onDiscovered && (
-          <button
-            onClick={() => setShowDiscovery(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/95 backdrop-blur border shadow hover:shadow-lg transition-all duration-200 text-sm font-medium"
-            title="Discover any university or research ecosystem"
-          >
-            <Compass className="w-4 h-4 text-muted-foreground" />
-            Discover
-          </button>
-        )}
-        {onRunChange && <RunSelector runs={runs} value={runId} onChange={onRunChange} />}
-      </div>
-
       {onDiscovered && (
         <DiscoveryModal
           isOpen={showDiscovery}
@@ -563,11 +548,31 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
         />
       )}
 
+      {/* Discover + run-snapshot picker now live inside the search pill (picker self-hides with no runs). */}
       <SearchBar
         graphData={graphData}
         onNodeSelect={handleNodeSelect}
         onHighlightNodes={handleHighlightNodes}
         onResumeParsed={handleResumeParsed}
+        inlineControls={
+          (onRunChange || onDiscovered) && (
+            <>
+              {onRunChange && (
+                <RunSelector variant="inline" runs={runs} value={runId} onChange={onRunChange} />
+              )}
+              {onDiscovered && (
+                <button
+                  onClick={() => setShowDiscovery(true)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-foreground/90 hover:text-foreground transition-colors"
+                  title="Discover any university or research ecosystem"
+                >
+                  <Compass className="w-4 h-4 text-muted-foreground" />
+                  <span className="hidden sm:inline">Discover</span>
+                </button>
+              )}
+            </>
+          )
+        }
       />
       {isRecommending && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50">
