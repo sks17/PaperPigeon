@@ -43,7 +43,14 @@ export interface Node {
   name: string;
   type: 'researcher' | 'lab';
   val: number;
-  [key: string]: any;
+  advisor?: string;
+  contact_info?: string[];
+  labs?: string[];
+  standing?: string;
+  papers?: Paper[];
+  tags?: string[];
+  influence?: number;
+  about?: string;
 }
 
 export interface Link {

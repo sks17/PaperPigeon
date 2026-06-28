@@ -27,8 +27,6 @@ const RecommendationsModal: React.FC<RecommendationsModalProps> = ({
   onClickResearcher,
   nameToResearcherId,
 }) => {
-  if (!isOpen) return null;
-
   const [isClosing, setIsClosing] = useState(false);
   const [isEntering, setIsEntering] = useState(true);
 
@@ -36,6 +34,9 @@ const RecommendationsModal: React.FC<RecommendationsModalProps> = ({
     const t = setTimeout(() => setIsEntering(false), 10);
     return () => clearTimeout(t);
   }, []);
+
+  // Hooks must run unconditionally, so gate rendering only after they're declared.
+  if (!isOpen) return null;
 
   const handleRequestClose = () => {
     if (isClosing) return;

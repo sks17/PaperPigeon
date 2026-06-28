@@ -27,7 +27,7 @@ export async function parsePdf(file: File): Promise<string> {
     const page = await pdf.getPage(pageNumber);
     const textContent = await page.getTextContent();
     const strings = textContent.items
-      .map((item: any) => ('str' in item ? String(item.str) : ''))
+      .map((item) => ('str' in item ? String(item.str) : ''))
       .filter(Boolean);
     fullText += strings.join(' ') + '\n\n';
   }

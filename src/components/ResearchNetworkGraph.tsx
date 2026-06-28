@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import ForceGraph3D from '3d-force-graph';
+import ForceGraph3D, { type ForceGraph3DInstance } from '3d-force-graph';
 import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
-import { fetchGraphData, type GraphData, type Researcher, type Paper, type Node as GraphNode, type RunSummary } from '../services/dynamodb';
+import { fetchGraphData, type GraphData, type Researcher, type Paper, type Node as GraphNode, type Link as GraphLink, type LabInfo, type RunSummary } from '../services/dynamodb';
 import ResearcherProfilePanel from './ResearcherProfilePanel';
 import ResearcherModal from './ResearcherModal';
 import SearchBar from './SearchBar';
@@ -13,7 +13,7 @@ import RecommendationsModal from './RecommendationsModal';
 import PaperChatModal from './PaperChatModal';
 import LabModal from './LabModal';
 import AccessibilityPanel from './AccessibilityPanel';
-import { useAccessibility } from '@/contexts/AccessibilityContext';
+import { useAccessibility } from '@/contexts/accessibility';
 import { Settings, Glasses, Compass } from 'lucide-react';
 
 interface ResearchNetworkGraphProps {
@@ -37,7 +37,7 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
 }) => {
   const [showDiscovery, setShowDiscovery] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<any>(null);
+  const graphRef = useRef<ForceGraph3DInstance<GraphNode, GraphLink> | null>(null);
   const [localGraphData, setLocalGraphData] = useState<GraphData | null>(null);
   const [localLoading, setLocalLoading] = useState(propGraphData === undefined);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +75,7 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
   // Lab modal state
   const [openLabId, setOpenLabId] = useState<string | null>(null);
   const [openLabName, setOpenLabName] = useState<string | null>(null);
-  const [labInfo, setLabInfo] = useState<any | null>(null);
+  const [labInfo, setLabInfo] = useState<LabInfo | null>(null);
   const [labFaculty, setLabFaculty] = useState<Researcher[]>([]);
 
   const openLabWithData = useCallback(async (labId: string, labName: string) => {
@@ -101,7 +101,7 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
   }, [graphData]);
 
   // Debounced hover handler
-  const handleNodeHover = useCallback((node: any) => {
+  const handleNodeHover = useCallback((node: GraphNode | null) => {
     // Clear existing timeout
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
@@ -119,7 +119,7 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
             labs: node.labs,
             standing: node.standing
           });
-          setHoveredResearcher(node);
+          setHoveredResearcher(node as Researcher);
           setShowProfilePanel(true);
         }
       }, 150);
@@ -151,10 +151,10 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
   }, []);
 
   // Modal handlers
-  const handleNodeClick = useCallback(async (node: any) => {
+  const handleNodeClick = useCallback(async (node: GraphNode | null) => {
     if (!node) return;
     if (node.type === 'researcher') {
-      setSelectedResearcher(node);
+      setSelectedResearcher(node as Researcher);
       setShowModal(true);
     } else if (node.type === 'lab') {
       openLabWithData(node.id, node.name);
@@ -167,13 +167,13 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
   }, []);
 
   // Search handlers
-  const handleNodeSelect = useCallback((node: any) => {
+  const handleNodeSelect = useCallback((node: GraphNode) => {
     if (!node) return;
     if (node.type === 'lab') {
       openLabWithData(node.id, node.name);
       return;
     }
-    setSelectedResearcher(node);
+    setSelectedResearcher(node as Researcher);
     setShowModal(true);
   }, [openLabWithData]);
 
@@ -235,8 +235,8 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
           const scored = graphData.nodes
             .filter((n: GraphNode) => n.type === 'researcher')
             .map((n: GraphNode) => {
-              const tags = ((n as any).tags || []).join(' ').toLowerCase();
-              const about = ((n as any).about || '').toLowerCase();
+              const tags = (n.tags || []).join(' ').toLowerCase();
+              const about = (n.about || '').toLowerCase();
               // simple Jaccard-like overlap on words
               const resumeWords = new Set(lcResume.split(/[^a-z0-9]+/).filter(Boolean));
               const textWords = new Set((tags + ' ' + about).split(/[^a-z0-9]+/).filter(Boolean));
@@ -304,13 +304,15 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
       graphRef.current._destructor();
     }
 
-    // Initialize the 3D force graph
-    const graph = new ForceGraph3D(containerRef.current)
+    // Initialize the 3D force graph. The library hands its own NodeObject/LinkObject to every
+    // accessor; we parameterize the instance with our domain types (which satisfy those
+    // constraints) so the callbacks below are typed as our Node/Link instead of `any`.
+    const graph = (new ForceGraph3D(containerRef.current) as unknown as ForceGraph3DInstance<GraphNode, GraphLink>)
       .graphData(graphData)
       .d3AlphaDecay(0.01) // Slower decay for more stable layout
       .d3VelocityDecay(0.3) // Higher velocity decay for less movement
       .cooldownTicks(100) // More ticks for better initial positioning
-      .nodeThreeObject((node: any) => {
+      .nodeThreeObject((node: GraphNode) => {
         // Create a group to hold both the shape and text
         const group = new THREE.Group();
         
@@ -345,28 +347,28 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
         
         return group;
       })
-      .linkColor((link: any) => {
+      .linkColor((link: GraphLink) => {
         if (link.type === 'advisor') return '#dc2626'; // Red for advisor
         if (link.type === 'researcher_lab') return '#059669'; // Green for researcher-to-lab
         return '#6b7280'; // Gray for paper
       })
-      .linkWidth((link: any) => {
+      .linkWidth((link: GraphLink) => {
         if (link.type === 'advisor') return 1; // Very thin for advisor arrows
         if (link.type === 'researcher_lab') return 2; // Normal for researcher-to-lab
         return 2; // Normal for paper
       })
-      .linkDirectionalArrowLength((link: any) => {
+      .linkDirectionalArrowLength((link: GraphLink) => {
         if (link.type === 'advisor') return 4; // Arrows for advisor links
         if (link.type === 'researcher_lab') return 3; // Arrows for researcher-to-lab links
         return 0; // No arrows for paper links
       })
-      .linkDirectionalArrowColor((link: any) => {
+      .linkDirectionalArrowColor((link: GraphLink) => {
         if (link.type === 'advisor') return '#dc2626'; // Red arrows for advisor
         if (link.type === 'researcher_lab') return '#059669'; // Green arrows for researcher-to-lab
         return '#6b7280'; // Gray for paper
       })
       .linkDirectionalArrowRelPos(1) // Arrow at the end of the link
-      .linkCurvature((link: any) => {
+      .linkCurvature((link: GraphLink) => {
         if (link.type === 'advisor') return 0.25; // Curved arrows for advisor links
         if (link.type === 'researcher_lab') return 0.15; // Slightly curved for researcher-to-lab
         return 0; // Straight for paper links
@@ -397,6 +399,10 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
         graphRef.current._destructor();
       }
     };
+    // Rebuild only when the dataset changes. Hover/click handlers are stable and node
+    // highlighting is repainted by the separate effect below, so they're intentionally omitted
+    // to avoid tearing down and recreating the whole graph on every highlight change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphData]);
 
   // Separate effect for updating node highlighting without re-rendering the graph
@@ -404,7 +410,7 @@ const ResearchNetworkGraph: React.FC<ResearchNetworkGraphProps> = ({
     if (!graphRef.current) return;
 
     // Update node colors without recreating the entire graph
-    graphRef.current.nodeThreeObject((node: any) => {
+    graphRef.current.nodeThreeObject((node: GraphNode) => {
       // Create a group to hold both the shape and text
       const group = new THREE.Group();
       

@@ -9,7 +9,7 @@ import { parsePdf } from '@/services/pdf';
 
 interface SearchBarProps {
   graphData: GraphData | null;
-  onNodeSelect: (node: any) => void;
+  onNodeSelect: (node: GraphNode) => void;
   onHighlightNodes: (nodeIds: string[]) => void;
   onResumeParsed?: (text: string) => void;
   /** Data-context controls (run picker, Discover) rendered inside the pill, between the input and the upload button. */
@@ -55,10 +55,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
     graphData.nodes.forEach((node: GraphNode) => {
       const nodeName = node.name.toLowerCase();
       const matchesName = nodeName.includes(normalizedQuery);
-      const matchesLab = (node as any).labs?.some((lab: string) => 
+      const matchesLab = node.labs?.some((lab: string) =>
         lab.toLowerCase().includes(normalizedQuery)
       ) || false;
-      const matchesTag = (node as any).tags?.some((tag: string) => 
+      const matchesTag = node.tags?.some((tag: string) =>
         tag.toLowerCase().includes(normalizedQuery)
       ) || false;
 
@@ -114,10 +114,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
     graphData.nodes.forEach((node: GraphNode) => {
       const nodeName = node.name.toLowerCase();
       const matchesName = nodeName.includes(normalizedQuery);
-      const matchesLab = (node as any).labs?.some((lab: string) => 
+      const matchesLab = node.labs?.some((lab: string) =>
         lab.toLowerCase().includes(normalizedQuery)
       ) || false;
-      const matchesTag = (node as any).tags?.some((tag: string) => 
+      const matchesTag = node.tags?.some((tag: string) =>
         tag.toLowerCase().includes(normalizedQuery)
       ) || false;
 
@@ -239,6 +239,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
         clearTimeout(searchTimeoutRef.current);
       }
       if (highlightTimeoutRef.current) {
+        // Read at unmount on purpose, to clear whatever timer is pending then (clearing an
+        // elapsed/stale id is a harmless no-op).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         clearTimeout(highlightTimeoutRef.current);
       }
     };

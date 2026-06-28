@@ -24,6 +24,15 @@ interface PaperChatModalProps {
   onClose: () => void;
 }
 
+/** Shape of the citations returned by the Bedrock RAG endpoint (only the fields we read). */
+interface RagReference {
+  content?: { text?: string };
+  location?: { s3Location?: { uri?: string } };
+}
+interface RagCitation {
+  retrievedReferences?: RagReference[];
+}
+
 const PaperChatModal: React.FC<PaperChatModalProps> = ({
   paper,
   isOpen,
@@ -47,11 +56,14 @@ const PaperChatModal: React.FC<PaperChatModalProps> = ({
     }
   }, [isOpen]);
 
-  // Reset messages when paper changes (only if it's a different paper)
+  // Reset messages when paper changes (only if it's a different paper).
+  // Keyed on document_id on purpose: re-running for a new `paper` object with the same id
+  // would needlessly wipe the conversation.
   useEffect(() => {
     if (paper) {
       setMessages([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper?.document_id]);
 
   const handleSendMessage = async () => {
@@ -87,18 +99,15 @@ const PaperChatModal: React.FC<PaperChatModalProps> = ({
 
       // Format citations for display
       const formattedCitations: Array<{ text: string; source?: string }> = [];
-      if (ragResponse.citations) {
-        ragResponse.citations.forEach((citation: any) => {
-          if (citation.retrievedReferences) {
-            citation.retrievedReferences.forEach((ref: any) => {
-              formattedCitations.push({
-                text: ref.content?.text || '',
-                source: ref.location?.s3Location?.uri || 'Unknown source',
-              });
-            });
-          }
+      const citations: RagCitation[] = ragResponse.citations ?? [];
+      citations.forEach((citation) => {
+        citation.retrievedReferences?.forEach((ref) => {
+          formattedCitations.push({
+            text: ref.content?.text || '',
+            source: ref.location?.s3Location?.uri || 'Unknown source',
+          });
         });
-      }
+      });
 
       const botMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),

@@ -1,19 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { GraphData } from '../services/dynamodb';
+import type { GraphData, Node as GraphNode, Link as GraphLink } from '../services/dynamodb';
 
 // Import aframe before 3d-force-graph-vr
 import 'aframe';
-import ForceGraphVR from '3d-force-graph-vr';
+import ForceGraphVR, { type ForceGraphVRInstance } from '3d-force-graph-vr';
 
 interface VRGraphProps {
   graphData: GraphData | null;
   loading?: boolean;
 }
 
+// Nodes get fixed positions assigned before handing them to the VR renderer.
+type VRNode = GraphNode & { fx: number; fy: number; fz: number };
+
 const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<any>(null);
+  const graphRef = useRef<ForceGraphVRInstance<VRNode, GraphLink> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -35,7 +38,7 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
       const gridSize = Math.ceil(Math.sqrt(numNodes));
       const spacing = 30; // Units between nodes
       
-      const positionedNodes = graphData.nodes.map((node: any, index: number) => {
+      const positionedNodes: VRNode[] = graphData.nodes.map((node, index) => {
         const row = Math.floor(index / gridSize);
         const col = index % gridSize;
         return {
@@ -46,10 +49,10 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
           fz: -150, // 150 units in front of camera (camera starts at z=0 looking at -z)
         };
       });
-      
+
       const positionedData = {
         nodes: positionedNodes,
-        links: graphData.links.map((link: any) => ({
+        links: graphData.links.map((link) => ({
           ...link,
           // Ensure links reference node objects correctly
           source: link.source,
@@ -60,13 +63,13 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
       console.log('Creating VR graph with positioned nodes:', positionedNodes.slice(0, 3));
 
       // Initialize VR graph
-      const graph = ForceGraphVR()(containerRef.current);
-      
+      const graph = ForceGraphVR<VRNode, GraphLink>()(containerRef.current);
+
       // Configure graph settings - SIMPLE configuration
       graph
         .graphData(positionedData)
-        .nodeLabel((node: any) => node.name || node.id)
-        .nodeColor((node: any) => node.type === 'lab' ? '#00ff00' : '#ff6600')
+        .nodeLabel((node) => node.name || node.id)
+        .nodeColor((node) => node.type === 'lab' ? '#00ff00' : '#ff6600')
         .nodeVal(10) // Fixed large size for all nodes
         .nodeRelSize(5)
         .nodeOpacity(1)
