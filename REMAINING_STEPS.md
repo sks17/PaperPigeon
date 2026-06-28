@@ -10,6 +10,16 @@ public site._
   (323/1043). Secrets set: `DATABASE_URL`, `OPENALEX_API_KEY`, `OPENROUTER_API_KEY`, `DISCOVERY_API_KEY`.
 - **Verified in production:** auth gate (401 without key), and a real *University of Toronto* discovery
   ran on the deployed worker → run #2 (200 researchers, 80 grounded descriptions).
+  - ⚠️ That run #2 was built with the **old** discovery code (sparse co-authorship, no labs). It has
+    been **recreated with the new approach** and now ships as a committed example snapshot
+    (`backend/repopulation/examples/university_of_toronto.json`), seeded idempotently on every deploy
+    by `scripts/prod_migrate_seed.py` → `examples/seed.py`. The shipped example carries a distinct
+    `seed.example=true`, so it seeds as its own canonical run and never collides with run #2.
+  - **One-time cleanup on the live DB:** drop the stale run #2 so the picker shows only the new one:
+    `fly ssh console -a paper-pigeon-api -C "python -c \"from backend.repopulation.db import *; ...\""`
+    — or simplest, from a psql session: `DELETE FROM repop.repopulation_run WHERE id = 2;`
+    (run-membership / nodes cascade or are shared; the legacy published graph is unaffected).
+  - Regenerate the example anytime with: `python scripts/build_example.py --institution "University of Toronto"`.
 - **`vercel.json` rewrites fixed** (it was invalid JSON + missing the discovery routes). It now proxies
   `graph/data`, `node/description`, `lab`, `runs`, `discover`, `discover/:id` to fly, leaving the AWS
   endpoints on Flask. Already committed — you just need to deploy it (Step 2).

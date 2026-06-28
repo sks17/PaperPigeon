@@ -21,6 +21,7 @@ import psycopg  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
 from backend.repopulation.db import make_engine, make_session_factory, migration_files  # noqa: E402
+from backend.repopulation.examples.seed import seed_example_runs  # noqa: E402
 from backend.repopulation.importer.cache_to_rows import cache_to_rows  # noqa: E402
 from backend.repopulation.loader import load_import_rows  # noqa: E402
 from backend.repopulation.models.nodes import Node  # noqa: E402
@@ -56,6 +57,11 @@ def main() -> int:
                 session, cache_to_rows(json.loads(CACHE.read_text(encoding="utf-8")))
             )
             print(f"seeded legacy graph: {counts}")
+
+        # Committed example run snapshots (e.g. University of Toronto), idempotent + never published —
+        # they appear only in the run-snapshot picker, leaving the default served graph unchanged.
+        example_status = seed_example_runs(session)
+        print(f"example runs: {example_status or 'none'}")
 
     print("prod migrate + seed complete.")
     return 0
