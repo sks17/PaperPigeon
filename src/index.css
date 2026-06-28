@@ -4,6 +4,16 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Marketing/site type system (scoped to the landing + docs via the .font-* utilities; the graph
+     app keeps its own default font). Instrument Serif for the literary wordmark + headings, Hanken
+     Grotesk for clean body/UI. */
+  --font-instrument: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-hanken: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-hairline: var(--hairline);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -223,4 +233,40 @@ html {
     margin: 0;
     padding: 0;
   }
+}
+
+/* ─── Marketing site (landing + docs) ──────────────────────────────────────────
+   Warm-paper editorial surface. Scoped here so the graph app is untouched. The body is
+   globally `overflow: hidden` (full-screen WebGL app), so each site page is its own scroll
+   container. */
+:root {
+  --paper: #fbfaf7;
+  --ink: #1c1b19;
+  --ink-soft: #76726b;
+  --ink-faint: #a7a299;
+  --hairline: #e7e2d9;
+}
+
+.site-page {
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--paper);
+  color: var(--ink);
+  /* a barely-there warm vignette + paper grain for depth instead of flat fill */
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(28, 27, 25, 0.04), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+}
+
+@keyframes site-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.site-rise {
+  opacity: 0;
+  animation: site-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-rise { animation: none; opacity: 1; transform: none; }
 }
