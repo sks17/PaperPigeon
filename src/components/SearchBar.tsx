@@ -9,9 +9,11 @@ import { parsePdf } from '@/services/pdf';
 
 interface SearchBarProps {
   graphData: GraphData | null;
-  onNodeSelect: (node: any) => void;
+  onNodeSelect: (node: GraphNode) => void;
   onHighlightNodes: (nodeIds: string[]) => void;
   onResumeParsed?: (text: string) => void;
+  /** Data-context controls (run picker, Discover) rendered inside the pill, between the input and the upload button. */
+  inlineControls?: React.ReactNode;
 }
 
 interface SearchResult {
@@ -28,6 +30,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onNodeSelect,
   onHighlightNodes,
   onResumeParsed,
+  inlineControls,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -52,10 +55,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
     graphData.nodes.forEach((node: GraphNode) => {
       const nodeName = node.name.toLowerCase();
       const matchesName = nodeName.includes(normalizedQuery);
-      const matchesLab = (node as any).labs?.some((lab: string) => 
+      const matchesLab = node.labs?.some((lab: string) =>
         lab.toLowerCase().includes(normalizedQuery)
       ) || false;
-      const matchesTag = (node as any).tags?.some((tag: string) => 
+      const matchesTag = node.tags?.some((tag: string) =>
         tag.toLowerCase().includes(normalizedQuery)
       ) || false;
 
@@ -111,10 +114,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
     graphData.nodes.forEach((node: GraphNode) => {
       const nodeName = node.name.toLowerCase();
       const matchesName = nodeName.includes(normalizedQuery);
-      const matchesLab = (node as any).labs?.some((lab: string) => 
+      const matchesLab = node.labs?.some((lab: string) =>
         lab.toLowerCase().includes(normalizedQuery)
       ) || false;
-      const matchesTag = (node as any).tags?.some((tag: string) => 
+      const matchesTag = node.tags?.some((tag: string) =>
         tag.toLowerCase().includes(normalizedQuery)
       ) || false;
 
@@ -236,6 +239,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
         clearTimeout(searchTimeoutRef.current);
       }
       if (highlightTimeoutRef.current) {
+        // Read at unmount on purpose, to clear whatever timer is pending then (clearing an
+        // elapsed/stale id is a harmless no-op).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
         clearTimeout(highlightTimeoutRef.current);
       }
     };
@@ -274,7 +280,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <div className="fixed top-6 left-6 z-40 w-[500px]">
+    <div className="fixed top-6 left-6 z-40 w-[min(600px,calc(100vw-3rem))]">
       {/* Search Bar */}
       <div className="relative">
         <div className="flex items-center space-x-3 bg-white/95 backdrop-blur-sm rounded-full shadow-lg border px-6 py-3 transition-all duration-200 hover:shadow-xl focus-within:ring-2 focus-within:ring-primary/30">
@@ -286,7 +292,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
           </div>
 
           {/* Search Input */}
-          <div className="flex-1 relative">
+          <div className="flex-1 min-w-0 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               ref={inputRef}
@@ -305,6 +311,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             )}
           </div>
+
+          {/* Data-context controls (run picker, Discover) live inside the pill */}
+          {inlineControls && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="h-6 w-px bg-border" />
+              {inlineControls}
+            </div>
+          )}
 
           {/* Resume Upload */}
           <div className="relative">

@@ -5,33 +5,8 @@
  * preferences. Settings are persisted to localStorage and applied via
  * CSS custom properties on the document root.
  */
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-interface AccessibilitySettings {
-  highContrast: boolean;
-  colorblindMode: 'none' | 'protanopia' | 'deuteranopia' | 'tritanopia';
-  reducedMotion: boolean;
-  fontSize: 'small' | 'medium' | 'large';
-}
-
-interface AccessibilityContextType {
-  settings: AccessibilitySettings;
-  updateSettings: (newSettings: Partial<AccessibilitySettings>) => void;
-  toggleHighContrast: () => void;
-  toggleColorblindMode: () => void;
-  toggleReducedMotion: () => void;
-  setFontSize: (size: AccessibilitySettings['fontSize']) => void;
-}
-
-const AccessibilityContext = createContext<AccessibilityContextType | undefined>(undefined);
-
-export const useAccessibility = () => {
-  const context = useContext(AccessibilityContext);
-  if (!context) {
-    throw new Error('useAccessibility must be used within an AccessibilityProvider');
-  }
-  return context;
-};
+import React, { useState, useEffect } from 'react';
+import { AccessibilityContext, type AccessibilitySettings } from './accessibility';
 
 export const AccessibilityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettings] = useState<AccessibilitySettings>({

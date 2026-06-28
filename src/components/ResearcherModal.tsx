@@ -86,7 +86,7 @@ const ResearcherModal: React.FC<ResearcherModalProps> = ({
       return { type: 'email', value: contact, icon: Mail };
     }
     // Check if it's a phone number
-    if (/^[\+]?[1-9][\d]{0,15}$/.test(contact.replace(/[\s\-\(\)]/g, ''))) {
+    if (/^[+]?[1-9]\d{0,15}$/.test(contact.replace(/[\s()-]/g, ''))) {
       return { type: 'phone', value: contact, icon: Phone };
     }
     // Check if it's a URL

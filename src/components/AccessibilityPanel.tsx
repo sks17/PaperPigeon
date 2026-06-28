@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Settings, Eye, Palette, Zap, Type } from 'lucide-react';
-import { useAccessibility } from '@/contexts/AccessibilityContext';
+import { useAccessibility } from '@/contexts/accessibility';
 
 const AccessibilityPanel: React.FC = () => {
   const {
