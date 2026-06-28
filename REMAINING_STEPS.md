@@ -15,10 +15,14 @@ public site._
     (`backend/repopulation/examples/university_of_toronto.json`), seeded idempotently on every deploy
     by `scripts/prod_migrate_seed.py` → `examples/seed.py`. The shipped example carries a distinct
     `seed.example=true`, so it seeds as its own canonical run and never collides with run #2.
-  - **One-time cleanup on the live DB:** drop the stale run #2 so the picker shows only the new one:
-    `fly ssh console -a paper-pigeon-api -C "python -c \"from backend.repopulation.db import *; ...\""`
-    — or simplest, from a psql session: `DELETE FROM repop.repopulation_run WHERE id = 2;`
-    (run-membership / nodes cascade or are shared; the legacy published graph is unaffected).
+  - **One-time cleanup on the live DB:** drop the stale run #2 with the guarded cleanup script
+    (dry-run first; it refuses to touch the published graph and preserves anything another run shares).
+    After deploying so the script is on the machine:
+    ```bash
+    fly ssh console -a paper-pigeon-api -C "python scripts/cleanup_run.py --run-id 2"        # preview
+    fly ssh console -a paper-pigeon-api -C "python scripts/cleanup_run.py --run-id 2 --yes"  # delete
+    ```
+    (`fly ssh` runs it inside the app, where `DATABASE_URL` is already set.)
   - Regenerate the example anytime with: `python scripts/build_example.py --institution "University of Toronto"`.
 - **`vercel.json` rewrites fixed** (it was invalid JSON + missing the discovery routes). It now proxies
   `graph/data`, `node/description`, `lab`, `runs`, `discover`, `discover/:id` to fly, leaving the AWS
