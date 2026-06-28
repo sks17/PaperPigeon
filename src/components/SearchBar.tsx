@@ -280,7 +280,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <div className="fixed top-6 left-6 z-40 w-[min(600px,calc(100vw-3rem))]">
+    <div className="fixed top-6 left-6 z-40 w-[min(760px,calc(100vw-3rem))]">
       {/* Search Bar */}
       <div className="relative">
         <div className="flex items-center space-x-3 bg-white/95 backdrop-blur-sm rounded-full shadow-lg border px-6 py-3 transition-all duration-200 hover:shadow-xl focus-within:ring-2 focus-within:ring-primary/30">
