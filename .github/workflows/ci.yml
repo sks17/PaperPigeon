@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read   # gitleaks-action reads the PR's commit range via the API
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -29,6 +30,10 @@ jobs:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
         env:
+          # gitleaks-action@v2 now requires a token to scan PRs (it reads the PR commit range
+          # via the API); without it the job errors out before scanning. Same-repo PRs get the
+          # auto-provisioned read-only token.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   frontend:
