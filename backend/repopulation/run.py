@@ -18,7 +18,7 @@ from backend.repopulation.relevance.score import score_relevance
 from backend.repopulation.sources.openalex_parse import parse_openalex_author
 
 RUN_KEY = "run"
-SOURCE_KEYS = {"openalex": "openalex", "ror": "ror"}
+SOURCE_KEYS = {"openalex": "openalex", "ror": "ror", "estimate": "estimate"}
 
 
 def _researcher_text(node: dict) -> str:

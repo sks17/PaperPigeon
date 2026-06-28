@@ -38,10 +38,27 @@ surfacing them in the UI is deferred frontend work. This keeps the existing fron
 | `AUTHORED` | researcher → paper | 1.0 | author.recent_works |
 | `WORKS_ON` | researcher → topic | topic.score (share) | author.topics |
 | `COAUTHORED_WITH` | researcher → researcher | #joint works | pairs co-occurring on the same work (within the discovered author set); directed by author-id order, symmetric-normalization deferred |
+| `MEMBER_OF` (estimated) | researcher → lab | 1.0 | `estimate_labs.py` — co-authorship communities; see below |
 | `CITES` | paper → paper | 1.0 | optional — only if referenced works are present (parser doesn't expose them yet → skip in v1) |
 
-- Each node/edge → a `source_record_key` ('openalex' or 'ror'); `raw_s3_key` set by the client.
+- Each node/edge → a `source_record_key` ('openalex', 'ror', or 'estimate'); `raw_s3_key` set by the client.
 - Idempotent: node `id` and edge `(src,dst,type)` are stable identity keys (loader upserts).
+
+### Co-authorship coverage (why the cohort is connected)
+`OpenAlexClient.discover_authors` fetches the cohort's works **by `author.id` OR-batches**, not by
+institution. An institution-filtered works slice rarely contained two of the (≤200) discovered
+authors, so large universities produced almost no `COAUTHORED_WITH` edges. Fetching each author's own
+recent works guarantees any pair of cohort members who co-published is recoverable.
+
+### Estimated labs (`discovery/estimate_labs.py`) — lab affiliations without scraping
+Real labs come from the scraper (`build_lab_rows.py`), which often finds nothing for a novel
+university. As a fallback, `estimate_labs` clusters the co-authorship graph (deterministic weighted
+label propagation), takes the most senior member (h-index → output) of each community of size
+3–40 as the group's anchor/PI, and emits an estimated `lab` node (`attributes.estimated = true`,
+`method = 'coauthorship'`, sub-1.0 confidence) plus a `MEMBER_OF` edge per member. Runs on every
+discovery; a later real scrape (confidence ≥ that) supersedes it. Provenance: source `ai` (the
+closed-vocabulary value for a machine-derived record; the `coauthorship` derivation is on
+`attributes.method`).
 
 ## `build_rows` signature (pure)
 ```
