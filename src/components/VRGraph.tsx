@@ -11,8 +11,9 @@ interface VRGraphProps {
   loading?: boolean;
 }
 
-// Nodes get fixed positions assigned before handing them to the VR renderer.
-type VRNode = GraphNode & { fx: number; fy: number; fz: number };
+// 3d-force-graph mutates node objects (adds x/y/z) and link objects (source/target -> node refs),
+// so the renderer is handed shallow COPIES to avoid corrupting the shared graphData.
+type VRNode = GraphNode & { x?: number; y?: number; z?: number };
 
 const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -32,58 +33,32 @@ const VRGraph: React.FC<VRGraphProps> = ({ graphData, loading = false }) => {
 
       // Clear container completely
       containerRef.current.innerHTML = '';
-      
-      // Position nodes in a grid pattern in front of camera for guaranteed visibility
-      const numNodes = graphData.nodes.length;
-      const gridSize = Math.ceil(Math.sqrt(numNodes));
-      const spacing = 30; // Units between nodes
-      
-      const positionedNodes: VRNode[] = graphData.nodes.map((node, index) => {
-        const row = Math.floor(index / gridSize);
-        const col = index % gridSize;
-        return {
-          ...node,
-          // Fixed positions - no physics simulation
-          fx: (col - gridSize/2) * spacing,
-          fy: (row - gridSize/2) * spacing,
-          fz: -150, // 150 units in front of camera (camera starts at z=0 looking at -z)
-        };
-      });
 
-      const positionedData = {
-        nodes: positionedNodes,
-        links: graphData.links.map((link) => ({
-          ...link,
-          // Ensure links reference node objects correctly
-          source: link.source,
-          target: link.target,
-        }))
+      // Hand the renderer shallow copies — the force engine mutates these in place (node x/y/z,
+      // link source/target), and the same graphData object backs the 2D view.
+      const data = {
+        nodes: graphData.nodes.map((node) => ({ ...node })) as VRNode[],
+        links: graphData.links.map((link) => ({ ...link })),
       };
 
-      console.log('Creating VR graph with positioned nodes:', positionedNodes.slice(0, 3));
-
-      // Initialize VR graph
+      // Let 3d-force-graph-vr run its normal 3D force layout (the previous build pinned fixed
+      // positions AND zeroed the simulation ticks, so nodes never got rendered coordinates and the
+      // scene was empty). val sizes labs larger than researchers; colors match the 2D view's intent.
       const graph = ForceGraphVR<VRNode, GraphLink>()(containerRef.current);
-
-      // Configure graph settings - SIMPLE configuration
       graph
-        .graphData(positionedData)
+        .graphData(data)
         .nodeLabel((node) => node.name || node.id)
-        .nodeColor((node) => node.type === 'lab' ? '#00ff00' : '#ff6600')
-        .nodeVal(10) // Fixed large size for all nodes
-        .nodeRelSize(5)
-        .nodeOpacity(1)
-        .linkColor(() => '#ffffff')
-        .linkWidth(1)
-        .linkOpacity(0.5)
-        .warmupTicks(0) // Skip warmup since we use fixed positions
-        .cooldownTicks(0); // No simulation needed
+        .nodeColor((node) => (node.type === 'lab' ? '#22c55e' : '#f97316'))
+        .nodeVal((node) => (node.type === 'lab' ? 8 : 4))
+        .nodeRelSize(4)
+        .nodeOpacity(0.95)
+        .linkColor(() => '#9ca3af')
+        .linkWidth(0.5)
+        .linkOpacity(0.35);
 
       graphRef.current = graph;
       setIsInitialized(true);
       setError(null);
-      
-      console.log('VR Graph initialized with', positionedNodes.length, 'nodes');
     } catch (err) {
       console.error('VR Graph initialization failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to initialize VR mode');

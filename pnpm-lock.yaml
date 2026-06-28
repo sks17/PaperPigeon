@@ -80,6 +80,9 @@ importers:
       react-router-dom:
         specifier: ^6.28.0
         version: 6.30.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      super-three:
+        specifier: 0.173.5
+        version: 0.173.5
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.3.1
