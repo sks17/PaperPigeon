@@ -3,7 +3,7 @@
  * intent, and a single button into the graph app. Everything else is whitespace.
  */
 import { Link } from 'react-router-dom';
-import { PigeonSeal, SiteNav, SiteFooter } from '../components/site/SiteChrome';
+import { SiteNav, SiteFooter } from '../components/site/SiteChrome';
 
 export default function Landing() {
   return (
@@ -14,12 +14,8 @@ export default function Landing() {
         </header>
 
         <main className="flex flex-1 flex-col items-center justify-center py-28 text-center">
-          <div className="site-rise" style={{ animationDelay: '90ms' }}>
-            <PigeonSeal size={76} to={null} />
-          </div>
-
           <h1
-            className="site-rise mt-10 font-instrument font-normal tracking-[-0.01em] text-ink"
+            className="site-rise font-instrument font-normal tracking-[-0.01em] text-ink"
             style={{ animationDelay: '180ms', fontSize: 'clamp(3.75rem, 12vw, 8rem)', lineHeight: 0.92 }}
           >
             Paper&nbsp;Pigeon

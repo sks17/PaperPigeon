@@ -43,10 +43,11 @@ export function SiteNav() {
     ].join(' ');
 
   return (
-    <nav className="font-hanken flex items-center justify-center gap-10">
+    <nav className="font-hanken flex items-center justify-center gap-8">
       <NavLink to="/" end className={link}>
         Home
       </NavLink>
+      <PigeonSeal size={38} to="/" />
       <NavLink to="/docs" className={link}>
         Docs
       </NavLink>
